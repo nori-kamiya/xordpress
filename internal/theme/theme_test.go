@@ -42,6 +42,43 @@ func TestRender_IndexComposesIntoLayoutWithSiteName(t *testing.T) {
 	}
 }
 
+// Regression test for a confirmed vulnerability (roadmap-to-wp-parity.md
+// P0-1): the liquid engine did not auto-escape {{ }} output, so a post
+// titled "<script>...</script>" was served verbatim as live script on the
+// public site. post.title (plain text) must now be escaped; post.body
+// (intentionally raw HTML per the posts table schema) must still pass
+// through unescaped via the explicit `| safe` filter in the templates.
+func TestRender_EscapesTitleButNotBody(t *testing.T) {
+	r := New(t.TempDir())
+
+	data := map[string]any{
+		"site": map[string]any{"name": "Escape Test Site"},
+		"post": map[string]any{
+			"slug":  "escape-test",
+			"title": `5 < 10 & <script>alert(1)</script>`,
+			"body":  `<strong>raw html by design</strong>`,
+		},
+	}
+
+	out, err := r.Render(context.Background(), "post", data)
+	if err != nil {
+		t.Fatalf("Render returned error: %v", err)
+	}
+
+	if strings.Contains(out, "<script>alert(1)</script>") {
+		t.Errorf("post.title was not escaped — raw <script> tag reached the served HTML: %s", out)
+	}
+	if !strings.Contains(out, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Errorf("expected post.title's <script> tag to be HTML-escaped, got: %s", out)
+	}
+	if !strings.Contains(out, "5 &lt; 10 &amp; ") {
+		t.Errorf("expected post.title's < and & to be HTML-escaped, got: %s", out)
+	}
+	if !strings.Contains(out, "<strong>raw html by design</strong>") {
+		t.Errorf("expected post.body to pass through unescaped (raw HTML by design), got: %s", out)
+	}
+}
+
 func TestRender_PostComposesIntoLayout(t *testing.T) {
 	r := New(t.TempDir())
 

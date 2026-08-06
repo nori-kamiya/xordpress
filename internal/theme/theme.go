@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 
 	"github.com/osteele/liquid"
+	"github.com/osteele/liquid/render"
 )
 
 //go:embed themes/default
@@ -44,8 +45,24 @@ type Renderer struct {
 func New(dataDir string) *Renderer {
 	return &Renderer{
 		DataDir: dataDir,
-		engine:  liquid.NewEngine(),
+		engine:  newLiquidEngine(),
 	}
+}
+
+// newLiquidEngine returns a liquid.Engine with HTML auto-escaping enabled
+// for {{ ... }} expression output. Without this, values like post.title
+// (plain text, not meant to contain markup) are interpolated into the
+// served HTML verbatim -- confirmed exploitable: a post titled
+// "<script>...</script>" rendered as live script on the public site.
+// Templates that intentionally hold pre-rendered/raw HTML (post.body, which
+// is stored as raw HTML by design per the posts table schema comment, and
+// content_for_layout, which is this renderer's own already-rendered output)
+// must opt out explicitly with the `| safe` filter -- see templates/*.liquid
+// and layout/theme.liquid.
+func newLiquidEngine() *liquid.Engine {
+	engine := liquid.NewEngine()
+	engine.SetAutoEscapeReplacer(render.HtmlEscaper)
+	return engine
 }
 
 // Render renders tmplName (e.g. "index" or "post") from
@@ -71,7 +88,7 @@ func (r *Renderer) Render(ctx context.Context, tmplName string, data any) (strin
 
 	engine := r.engine
 	if engine == nil {
-		engine = liquid.NewEngine()
+		engine = newLiquidEngine()
 	}
 
 	bodySrc, err := fs.ReadFile(themeFS, filepath.ToSlash(filepath.Join(templatesDirName, tmplName+".liquid")))

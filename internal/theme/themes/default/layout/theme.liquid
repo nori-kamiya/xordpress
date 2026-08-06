@@ -10,7 +10,7 @@
     <h1><a href="/">{{ site.name }}</a></h1>
   </header>
   <main>
-    {{ content_for_layout }}
+    {{ content_for_layout | safe }}
   </main>
 </body>
 </html>
