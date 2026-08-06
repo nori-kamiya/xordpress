@@ -55,3 +55,14 @@ func DeleteSession(db *sql.DB, tokenHash string) error {
 	}
 	return nil
 }
+
+// DeleteSessionsByUserID deletes every session belonging to userID. Used
+// after a password change to force re-authentication everywhere (including
+// the session that made the change), so a stolen/leaked old session token
+// stops working the moment the password is rotated. No-op if none exist.
+func DeleteSessionsByUserID(db *sql.DB, userID int64) error {
+	if _, err := db.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("storage: delete sessions by user id: %w", err)
+	}
+	return nil
+}

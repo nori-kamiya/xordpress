@@ -22,6 +22,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   'version mismatch': '他の変更と競合しました。最新の内容を読み込み直してください。',
   'request body too large': '本文が大きすぎます(最大1MB)。',
   'internal error': 'サーバーエラーが発生しました。しばらくしてから再度お試しください。',
+  'invalid new_password': '新しいパスワードは8文字以上で入力してください。',
+  'current password is incorrect': '現在のパスワードが正しくありません。',
 
   // internal/auth/middleware.go: http.Error 経由(プレーンテキスト、apiFetchが末尾の改行をtrim済み)
   unauthorized: '認証が必要です。再度ログインしてください。',

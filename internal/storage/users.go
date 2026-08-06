@@ -41,3 +41,38 @@ func GetUserByUsername(db *sql.DB, username string) (*User, error) {
 	}
 	return u, nil
 }
+
+// GetUserByID returns the user with the given id. Returns ErrNotFound if no
+// such user exists.
+func GetUserByID(db *sql.DB, id int64) (*User, error) {
+	row := db.QueryRow(
+		`SELECT id, username, password_hash, created_at FROM users WHERE id = ?`, id,
+	)
+
+	u := &User{}
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("storage: get user by id: %w", err)
+	}
+	return u, nil
+}
+
+// UpdatePasswordHash overwrites the password hash for the user with the
+// given id. Returns ErrNotFound if no such user exists.
+func UpdatePasswordHash(db *sql.DB, id int64, newHash string) error {
+	res, err := db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, newHash, id)
+	if err != nil {
+		return fmt.Errorf("storage: update password hash: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: update password hash: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

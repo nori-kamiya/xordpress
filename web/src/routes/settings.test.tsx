@@ -9,6 +9,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Settings from './settings'
 import { ApiError, apiFetch } from '../api/client'
 
+const navigateMock = vi.fn()
+
+vi.mock('@tanstack/react-router', async () => {
+  const actual = await vi.importActual<typeof import('@tanstack/react-router')>('@tanstack/react-router')
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+  }
+})
+
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
   return {
@@ -92,5 +102,55 @@ describe('Settings', () => {
 
     expect(await screen.findByText('サイト名は1〜100文字で入力してください。')).toBeInTheDocument()
     expect(mockedApiFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('changes the password and navigates to /login on success', async () => {
+    mockedApiFetch.mockResolvedValueOnce({ site_name: 'My Site' })
+    mockedApiFetch.mockResolvedValueOnce(undefined)
+    const user = userEvent.setup()
+    renderWithQueryClient()
+
+    await screen.findByLabelText('サイト名')
+    await user.type(screen.getByLabelText('現在のパスワード'), 'old-password-123')
+    await user.type(screen.getByLabelText('新しいパスワード'), 'new-password-456')
+    await user.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    expect(mockedApiFetch).toHaveBeenLastCalledWith('/api/account/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: 'old-password-123', new_password: 'new-password-456' }),
+      skipUnauthorizedRedirect: true,
+    })
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/login' })
+  })
+
+  it('shows a client-side error for a too-short new password without calling the API', async () => {
+    mockedApiFetch.mockResolvedValueOnce({ site_name: 'My Site' })
+    const user = userEvent.setup()
+    renderWithQueryClient()
+
+    await screen.findByLabelText('サイト名')
+    await user.type(screen.getByLabelText('現在のパスワード'), 'old-password-123')
+    await user.type(screen.getByLabelText('新しいパスワード'), 'short')
+    await user.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    expect(await screen.findByText('新しいパスワードは8文字以上で入力してください。')).toBeInTheDocument()
+    expect(mockedApiFetch).toHaveBeenCalledTimes(1) // only the initial GET /api/settings
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('shows an inline error for a wrong current password and does not navigate', async () => {
+    mockedApiFetch.mockResolvedValueOnce({ site_name: 'My Site' })
+    mockedApiFetch.mockRejectedValueOnce(new ApiError(401, 'current password is incorrect'))
+    const user = userEvent.setup()
+    renderWithQueryClient()
+
+    await screen.findByLabelText('サイト名')
+    await user.type(screen.getByLabelText('現在のパスワード'), 'wrong-password')
+    await user.type(screen.getByLabelText('新しいパスワード'), 'new-password-456')
+    await user.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    expect(await screen.findByText('現在のパスワードが正しくありません。')).toBeInTheDocument()
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 })
