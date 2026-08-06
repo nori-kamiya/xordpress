@@ -43,6 +43,14 @@ export interface ApiFetchInit {
   headers?: Record<string, string>
   body?: string
   signal?: AbortSignal
+  /**
+   * POST /api/session (ログイン) は誤ったパスワードでも401を返すが、これは
+   * 「セッション切れ」ではないため、グローバルなqueryClient.clear()+
+   * onUnauthorizedによるログイン画面への強制遷移を発火させてはならない
+   * (ログインフォーム自身がその場でインラインエラーを表示する)。
+   * このケースでのみ true を渡し、401時のグローバルハンドラをスキップする。
+   */
+  skipUnauthorizedRedirect?: boolean
 }
 
 async function parseErrorMessage(res: Response): Promise<string> {
@@ -82,7 +90,7 @@ export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promis
     const message = await parseErrorMessage(res)
     const error = new ApiError(res.status, message)
     console.error(error)
-    if (res.status === 401) {
+    if (res.status === 401 && !init.skipUnauthorizedRedirect) {
       clientConfig?.queryClient.clear()
       clientConfig?.onUnauthorized()
     }

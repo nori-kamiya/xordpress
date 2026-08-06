@@ -6,20 +6,14 @@
 
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import Root from './routes/root'
+import Setup from './routes/setup'
+import Login from './routes/login'
 
 const rootRoute = createRootRoute({
   component: Root,
 })
 
 // --- T6〜T11 で実装に置き換えられるプレースホルダ ---
-
-function SetupPlaceholder() {
-  return null
-}
-
-function LoginPlaceholder() {
-  return null
-}
 
 function PostsIndexPlaceholder() {
   return null
@@ -40,7 +34,7 @@ function SettingsPlaceholder() {
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/setup',
-  component: SetupPlaceholder,
+  component: Setup,
 })
 
 interface LoginSearch {
@@ -56,7 +50,7 @@ const loginRoute = createRoute({
     redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
     setup: typeof search.setup === 'string' ? search.setup : undefined,
   }),
-  component: LoginPlaceholder,
+  component: Login,
 })
 
 const postsIndexRoute = createRoute({

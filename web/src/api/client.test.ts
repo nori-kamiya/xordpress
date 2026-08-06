@@ -118,6 +118,29 @@ describe('apiFetch', () => {
     expect(onUnauthorized).toHaveBeenCalledTimes(1)
   })
 
+  it('on 401 with skipUnauthorizedRedirect, does not clear the queryClient or call onUnauthorized', async () => {
+    // POST /api/session (bad password) and POST /api/setup (bad token) also
+    // return 401, but that's not a "session expired" event -- the calling
+    // form shows its own inline error. Regression test for the bug found
+    // during T7 review: login()'s 401 was silently firing the global
+    // logout-redirect handler underneath the form's own error handling.
+    fetchSpy.mockResolvedValue(
+      mockResponse({ ok: false, status: 401, contentType: 'application/json', body: '{"error":"unauthorized"}' }),
+    )
+    const clear = vi.fn()
+    const onUnauthorized = vi.fn()
+    configureApiClient({
+      queryClient: { clear } as unknown as import('@tanstack/react-query').QueryClient,
+      onUnauthorized,
+    })
+
+    await expect(
+      apiFetch('/api/session', { method: 'POST', skipUnauthorizedRedirect: true }),
+    ).rejects.toBeInstanceOf(ApiError)
+    expect(clear).not.toHaveBeenCalled()
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+
   it('does not trigger onUnauthorized for non-401 errors', async () => {
     fetchSpy.mockResolvedValue(
       mockResponse({ ok: false, status: 404, contentType: 'application/json', body: '{"error":"post not found"}' }),
