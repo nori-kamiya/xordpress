@@ -8,28 +8,14 @@ import { createRootRoute, createRoute, createRouter } from '@tanstack/react-rout
 import Root from './routes/root'
 import Setup from './routes/setup'
 import Login from './routes/login'
+import PostsIndex from './routes/posts.index'
+import PostsNew from './routes/posts.new'
+import PostsEdit from './routes/posts.edit'
+import Settings from './routes/settings'
 
 const rootRoute = createRootRoute({
   component: Root,
 })
-
-// --- T6〜T11 で実装に置き換えられるプレースホルダ ---
-
-function PostsIndexPlaceholder() {
-  return null
-}
-
-function PostsNewPlaceholder() {
-  return null
-}
-
-function PostsEditPlaceholder() {
-  return null
-}
-
-function SettingsPlaceholder() {
-  return null
-}
 
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -56,25 +42,25 @@ const loginRoute = createRoute({
 const postsIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/posts',
-  component: PostsIndexPlaceholder,
+  component: PostsIndex,
 })
 
 const postsNewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/posts/new',
-  component: PostsNewPlaceholder,
+  component: PostsNew,
 })
 
 const postsEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/posts/$postId/edit',
-  component: PostsEditPlaceholder,
+  component: PostsEdit,
 })
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
-  component: SettingsPlaceholder,
+  component: Settings,
 })
 
 const routeTree = rootRoute.addChildren([
