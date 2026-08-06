@@ -19,7 +19,11 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
                       └─ T12 (最終結合: npm run build → dist差し替え → go build/test → ブラウザ手動確認) [depends: T1,T6-T11]
 ```
 
-**並列化の目安**: T1・T2は最初のバッチで同時着手。T3完了後、T4→T5の直列は避けられない(APIクライアント→ルーター雛形の順で他画面が依存するため)。T5完了後はT6〜T11の6画面を全て並列実行可能(いずれもroot.tsx/router.tsxを読むだけで、互いに異なるファイルしか書かない)。
+**並列化の目安**: T1・T2は最初のバッチで同時着手。T3完了後、T4→T5の直列は避けられない(APIクライアント→ルーター雛形の順で他画面が依存するため)。
+
+**T6〜T11の`router.tsx`競合について(T5完了後に判明・修正済み)**: T5はプレースホルダコンポーネントを`router.tsx`にインライン定義した(design.mdの想定どおり別ファイルに切り出さなかった)ため、T6〜T11は各自の画面ファイル作成に加えて`router.tsx`の対応するプレースホルダをimportに置換する編集が必要(各タスクのfiles節に追記済み)。全タスクが同じファイルの異なる行を編集するため、**真の並列実行(gitワークツリー分離等)では衝突する** — `implement-tasks`ワークフローのような単一ツリーでの逐次実行であれば問題ない。真に並列実行したい場合はT6実行後に一度router.tsxの競合を手動解消すること。
+
+**テスト基盤(T5完了後に追加済み)**: T6〜T11の verify が要求するコンポーネントテストのため、`jsdom`・`@testing-library/react`・`@testing-library/jest-dom`・`@testing-library/user-event` を devDependencies に追加し、`vite.config.ts` に `test.environment: 'jsdom'` と `test.setupFiles: ['./src/setupTests.ts']` を設定済み。T6以降はこれを前提にコンポーネントテストを書ける(追加のセットアップ作業は不要)。
 
 ## T1: backend — GET /api/settings 追加
 
@@ -64,7 +68,7 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
 ## T6: web — setup画面
 
 - depends on: T5
-- files: `web/src/routes/setup.tsx`(create, プレースホルダから実装に置換)
+- files: `web/src/routes/setup.tsx`(create), `web/src/router.tsx`(modify — `setupRoute`の`component`を`SetupPlaceholder`から本ファイルのimportに置換し、不要になった`SetupPlaceholder`関数を削除)
 - what: design.md §5.1のフォーム(setup token・username・password・site_name)。`POST /api/setup`(Authorizationヘッダー)。`201`→`/admin/login`へ`setup=done`検索パラメータ付きで遷移。`409`→インラインで「セットアップ済みです。ログインしてください」+ログインへのリンク。`400`系はT4の`errorMessages.ts`でマッピングしフィールド単位に表示(`invalid username`→username欄、等)。
 - verify: `cd web && npm run test -- setup` → フォーム検証・409/201分岐のコンポーネントテストがgreen。`npm run typecheck`green。
 - executor: sonnet
@@ -72,7 +76,7 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
 ## T7: web — login画面
 
 - depends on: T5
-- files: `web/src/routes/login.tsx`(create)
+- files: `web/src/routes/login.tsx`(create), `web/src/router.tsx`(modify — `loginRoute`の`component`を`LoginPlaceholder`から本ファイルのimportに置換し、不要になった`LoginPlaceholder`関数を削除。`LoginSearch`の`redirect`/`setup`フィールドは既にT5で定義済みなのでそのまま使う)
 - what: username/passwordフォーム。`POST /api/session`。`204`→`queryClient.invalidateQueries(['posts'])`→`/admin/posts`へ遷移。`401`→インライン「ユーザー名またはパスワードが違います」。`?redirect=`検索パラメータがあれば成功時にそちらへ遷移(design.md §5.2)。`?setup=done`があれば成功バナー表示。
 - verify: `cd web && npm run test -- login` → 204/401分岐・redirect遷移のテストがgreen。
 - executor: sonnet
@@ -80,7 +84,7 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
 ## T8: web — 投稿一覧画面
 
 - depends on: T5
-- files: `web/src/routes/posts.index.tsx`(create)
+- files: `web/src/routes/posts.index.tsx`(create), `web/src/router.tsx`(modify — `postsIndexRoute`の`component`を`PostsIndexPlaceholder`から本ファイルのimportに置換し、不要になった`PostsIndexPlaceholder`関数を削除)
 - what: `GET /api/posts?status=&limit=&offset=`一覧をテーブル表示(title/status/updated_at/操作列)。statusフィルタ・ページネーション(limit/offset)。「新規作成」ボタン→`/admin/posts/new`。各行に編集リンク(`/admin/posts/$postId/edit`)と削除ボタン(`DELETE`+`If-Match`、design.md §5.3の412時トースト+`invalidateQueries(['posts'])`)。
 - verify: `cd web && npm run test -- posts.index` → 一覧表示・フィルタ・削除の200/412分岐テストがgreen。
 - executor: sonnet
@@ -88,7 +92,7 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
 ## T9: web — 投稿作成画面
 
 - depends on: T5
-- files: `web/src/routes/posts.new.tsx`(create)
+- files: `web/src/routes/posts.new.tsx`(create), `web/src/router.tsx`(modify — `postsNewRoute`の`component`を`PostsNewPlaceholder`から本ファイルのimportに置換し、不要になった`PostsNewPlaceholder`関数を削除)
 - what: title/slug(titleから自動生成、編集可)/body/status(draft・published)フォーム。`POST /api/posts`。`201`→`/admin/posts/$id/edit`へ遷移。`409`(slug衝突)→slug欄にインラインエラー。`400`系は`errorMessages.ts`でフィールドマッピング。
 - verify: `cd web && npm run test -- posts.new` → slug自動生成・201/409/400分岐テストがgreen。
 - executor: sonnet
@@ -96,7 +100,7 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
 ## T10: web — 投稿編集画面
 
 - depends on: T5
-- files: `web/src/routes/posts.edit.tsx`(create)
+- files: `web/src/routes/posts.edit.tsx`(create), `web/src/router.tsx`(modify — `postsEditRoute`の`component`を`PostsEditPlaceholder`から本ファイルのimportに置換し、不要になった`PostsEditPlaceholder`関数を削除)
 - what: ロード時`GET /api/posts/{id}`(`404`→not-found表示)。フォームにtitle/slug/body/status、`version`はhidden state保持。保存は`PUT`+`If-Match:"${version}"`。`412`→design.md §5.3の衝突バナー(「最新を読み込む」ボタンで再`GET`しフォーム値・versionをリセット)。`409`(slug衝突)→slug欄エラー。削除ボタン(`DELETE`+`If-Match`、成功後`/admin/posts`へ)。
 - verify: `cd web && npm run test -- posts.edit` → 412衝突バナー・404・削除の各分岐テストがgreen。
 - executor: sonnet
@@ -104,7 +108,7 @@ T2 (adminui: 既存テストの脱プレースホルダ化) ─── 独立、�
 ## T11: web — 設定画面
 
 - depends on: T5, T1
-- files: `web/src/routes/settings.tsx`(create)
+- files: `web/src/routes/settings.tsx`(create), `web/src/router.tsx`(modify — `settingsRoute`の`component`を`SettingsPlaceholder`から本ファイルのimportに置換し、不要になった`SettingsPlaceholder`関数を削除)
 - what: ロード時`GET /api/settings`で現在の`site_name`を表示。`PUT /api/settings`で更新。`400`(1-100文字外)→インラインエラー。成功時トースト表示。
 - verify: `cd web && npm run test -- settings` → 表示・更新・検証エラー分岐テストがgreen。T1が未完了だと`GET /api/settings`がモック以外では通らないため、統合確認はT12で行う(このタスクの単体テストはfetchモックで完結させる)。
 - executor: sonnet
