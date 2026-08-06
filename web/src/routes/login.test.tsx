@@ -121,6 +121,20 @@ describe('Login', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the lockout message for a 429 (roadmap-to-wp-parity.md P0-3)', async () => {
+    vi.mocked(login).mockRejectedValue(new ApiError(429, 'too many failed login attempts, try again later'))
+    const user = userEvent.setup()
+    render(<Login />)
+
+    await fillForm(user)
+    await user.click(screen.getByRole('button', { name: 'ログイン' }))
+
+    expect(
+      await screen.findByText('ログイン試行回数が多すぎます。しばらくしてから再度お試しください。'),
+    ).toBeInTheDocument()
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
   it('shows a success banner when ?setup=done', () => {
     searchParams = { setup: 'done' }
     render(<Login />)

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -43,6 +44,10 @@ func Login(contentDB *sql.DB, authDB *sql.DB, baseURL string) http.Handler {
 		}
 
 		userID, ok, err := auth.Authenticate(r.Context(), contentDB, req.Username, req.Password)
+		if errors.Is(err, auth.ErrAccountLocked) {
+			writeError(w, http.StatusTooManyRequests, "too many failed login attempts, try again later")
+			return
+		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return

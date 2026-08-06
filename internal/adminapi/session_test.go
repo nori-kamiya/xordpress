@@ -11,6 +11,7 @@ import (
 	"github.com/nori-kamiya/xordpress/internal/adminapi"
 	"github.com/nori-kamiya/xordpress/internal/auth"
 	"github.com/nori-kamiya/xordpress/internal/content"
+	"github.com/nori-kamiya/xordpress/internal/storage"
 )
 
 const testBaseURL = "https://example.com"
@@ -84,6 +85,30 @@ func TestLogin_WrongPassword_Returns401(t *testing.T) {
 	}
 	if len(rec.Result().Cookies()) != 0 {
 		t.Error("no cookie should be set on failed login")
+	}
+}
+
+// Regression test for roadmap-to-wp-parity.md P0-3 (brute-force lockout).
+func TestLogin_LockedOutAfterRepeatedFailures_Returns429(t *testing.T) {
+	db := newTestDB(t)
+	seedAdmin(t, db, "admin", "password123")
+	handler := adminapi.Login(db, db, testBaseURL)
+
+	for i := 0; i < storage.MaxLoginFailures; i++ {
+		rec := doLoginRequest(t, handler, "admin", "wrong-password")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status = %d, want %d", i, rec.Code, http.StatusUnauthorized)
+		}
+	}
+
+	// Even the correct password must now be rejected, distinctly (429, not
+	// 401), so the client can tell "locked out" apart from "wrong password".
+	rec := doLoginRequest(t, handler, "admin", "password123")
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusTooManyRequests, rec.Body.String())
+	}
+	if len(rec.Result().Cookies()) != 0 {
+		t.Error("no cookie should be set while locked out")
 	}
 }
 
