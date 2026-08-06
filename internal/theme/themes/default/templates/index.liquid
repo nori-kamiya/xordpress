@@ -1,0 +1,8 @@
+<div class="post-list">
+  {% for post in posts %}
+  <article class="post-summary">
+    <h2><a href="/{{ post.slug }}">{{ post.title }}</a></h2>
+    <div class="post-body">{{ post.body }}</div>
+  </article>
+  {% endfor %}
+</div>

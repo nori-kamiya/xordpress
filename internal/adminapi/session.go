@@ -1,0 +1,103 @@
+// Package adminapi: session (login/logout) handlers (design.md §4).
+package adminapi
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/nori-kamiya/xordpress/internal/auth"
+	"github.com/nori-kamiya/xordpress/internal/storage"
+)
+
+// sessionCookieName is the name of the session cookie (design.md §4). It
+// must match auth.sessionCookieName, which is unexported; kept here so
+// Logout can locate and clear the cookie without adding a new export to the
+// auth package.
+const sessionCookieName = "xordpress_session"
+
+// loginRequest is the JSON body of POST /api/session.
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// Login returns the handler for POST /api/session (design.md §4). It
+// verifies username/password via auth.Authenticate (mismatch -> 401) and, on
+// success, issues a session cookie via auth.IssueSession and responds 204.
+//
+// baseURL is required to build the session cookie's Secure attribute via
+// auth.IssueSession; the work order's Login(content, auth) signature omits
+// it (as does design.md §5's routing sketch), but auth.IssueSession has no
+// other way to obtain it, so it is added here as a third parameter -- see
+// task report for this deviation.
+func Login(contentDB *sql.DB, authDB *sql.DB, baseURL string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		userID, ok, err := auth.Authenticate(r.Context(), contentDB, req.Username, req.Password)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		cookie, err := auth.IssueSession(r.Context(), authDB, baseURL, userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		http.SetCookie(w, cookie)
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// Logout returns the handler for DELETE /api/session (design.md §4; 要認証
+// -- in the full routing this endpoint is only reachable through
+// authMiddleware, but the handler defends independently so it behaves
+// correctly under direct test too). It deletes the session row identified
+// by the request's session cookie and clears the cookie client-side.
+func Logout(authDB *sql.DB) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(sessionCookieName)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		if err := storage.DeleteSession(authDB, hashSessionToken(cookie.Value)); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    "",
+			Path:     "/",
+			Expires:  time.Unix(0, 0),
+			MaxAge:   -1,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// hashSessionToken returns the hex-encoded SHA-256 hash of a raw session
+// token, matching auth.hashSessionToken's (unexported) algorithm so the
+// resulting hash matches the token_hash stored by auth.IssueSession.
+func hashSessionToken(rawToken string) string {
+	sum := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(sum[:])
+}
