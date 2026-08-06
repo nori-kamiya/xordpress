@@ -4,9 +4,22 @@ package auth
 
 import (
 	"database/sql"
+	"encoding/json"
 	"mime"
 	"net/http"
 )
+
+// writeError writes a JSON {"error": "..."} body, matching adminapi's
+// writeError shape. roadmap-to-wp-parity.md P0-4: this middleware used to
+// reject requests with http.Error's plain-text body while every handler
+// inside adminapi returned {"error":"..."} for the same status codes --  an
+// inconsistency clients had to special-case. All rejections from this
+// middleware now use the same JSON shape as the handlers it wraps.
+func writeError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
 
 // AuthMiddleware extracts the session cookie from the request, validates it
 // via ValidateSession, and rejects the request with 401 if the cookie is
@@ -15,12 +28,12 @@ func AuthMiddleware(db *sql.DB, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
 		if _, ok := ValidateSession(r.Context(), db, cookie.Value); !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
@@ -40,14 +53,14 @@ func AuthMiddleware(db *sql.DB, next http.Handler) http.Handler {
 func CSRFMiddleware(baseURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && origin != baseURL {
-			http.Error(w, "forbidden", http.StatusForbidden)
+			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
 		if r.Method == http.MethodPost || r.Method == http.MethodPut {
 			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil || mediaType != "application/json" {
-				http.Error(w, "unsupported content type", http.StatusBadRequest)
+				writeError(w, http.StatusBadRequest, "unsupported content type")
 				return
 			}
 		}

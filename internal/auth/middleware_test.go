@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,27 @@ import (
 
 	"github.com/nori-kamiya/xordpress/internal/storage"
 )
+
+// assertJSONError fails the test unless rec's body is exactly {"error":
+// wantMessage} with a JSON Content-Type. Regression test for
+// roadmap-to-wp-parity.md P0-4: this middleware used to reject requests with
+// http.Error's plain-text body while adminapi's handlers returned
+// {"error":"..."} for the same status codes.
+func assertJSONError(t *testing.T, rec *httptest.ResponseRecorder, wantMessage string) {
+	t.Helper()
+
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response body is not valid JSON: %v (body: %s)", err, rec.Body.String())
+	}
+	if body["error"] != wantMessage {
+		t.Errorf(`body["error"] = %q, want %q`, body["error"], wantMessage)
+	}
+}
 
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +66,7 @@ func TestAuthMiddlewareMissingCookieUnauthorized(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
+	assertJSONError(t, rec, "unauthorized")
 }
 
 func TestAuthMiddlewareExpiredSessionUnauthorized(t *testing.T) {
@@ -64,6 +87,7 @@ func TestAuthMiddlewareExpiredSessionUnauthorized(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
+	assertJSONError(t, rec, "unauthorized")
 }
 
 func TestAuthMiddlewareInvalidCookieUnauthorized(t *testing.T) {
@@ -78,6 +102,7 @@ func TestAuthMiddlewareInvalidCookieUnauthorized(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
+	assertJSONError(t, rec, "unauthorized")
 }
 
 func TestCSRFMiddlewareOriginMatchPasses(t *testing.T) {
@@ -115,6 +140,7 @@ func TestCSRFMiddlewareOriginMismatchForbidden(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
 	}
+	assertJSONError(t, rec, "forbidden")
 }
 
 // TestCSRFMiddlewareOriginMismatchForbiddenEvenWithoutAuth verifies that the
@@ -164,6 +190,7 @@ func TestCSRFMiddlewarePostWithoutContentTypeRejected(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		t.Fatalf("status = %d, want a non-200 rejection", rec.Code)
 	}
+	assertJSONError(t, rec, "unsupported content type")
 }
 
 func TestCSRFMiddlewarePutRequiresJSONContentType(t *testing.T) {
