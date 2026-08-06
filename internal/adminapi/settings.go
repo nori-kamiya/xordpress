@@ -19,6 +19,20 @@ type settingsResponse struct {
 	SiteName string `json:"site_name"`
 }
 
+// GetSettings returns the handler for GET /api/settings (design.md §4.1;
+// 要認証 -- enforced by the outer authMiddleware, not by this handler
+// itself). It reads the current site settings via content.GetSiteSettings.
+func GetSettings(contentDB *sql.DB) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		settings, err := content.GetSiteSettings(contentDB)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, settingsResponse{SiteName: settings.Name})
+	})
+}
+
 // UpdateSettings returns the handler for PUT /api/settings (design.md §4;
 // 要認証 -- enforced by the outer authMiddleware per §5's routing, not by
 // this handler itself). It validates site_name (1-100 chars, matching the

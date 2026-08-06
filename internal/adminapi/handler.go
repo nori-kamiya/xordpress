@@ -26,6 +26,7 @@ func Handler(contentDB *sql.DB, authDB *sql.DB) *http.ServeMux {
 
 	mux.Handle("DELETE /api/session", Logout(authDB))
 
+	mux.Handle("GET /api/settings", GetSettings(contentDB))
 	mux.Handle("PUT /api/settings", UpdateSettings(contentDB))
 
 	return mux

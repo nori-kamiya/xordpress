@@ -26,6 +26,55 @@ func doSettingsRequest(t *testing.T, handler http.Handler, body map[string]strin
 	return rec
 }
 
+func TestGetSettings_SiteNameSet_ReturnsSiteName(t *testing.T) {
+	db := newTestDB(t)
+	if err := content.SetSiteSettings(db, "My Site"); err != nil {
+		t.Fatalf("SetSiteSettings: %v", err)
+	}
+	handler := adminapi.GetSettings(db)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		SiteName string `json:"site_name"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.SiteName != "My Site" {
+		t.Fatalf("response site_name = %q, want %q", resp.SiteName, "My Site")
+	}
+}
+
+func TestGetSettings_SiteNameNotSet_ReturnsEmptyString(t *testing.T) {
+	db := newTestDB(t)
+	handler := adminapi.GetSettings(db)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		SiteName string `json:"site_name"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.SiteName != "" {
+		t.Fatalf("response site_name = %q, want empty string", resp.SiteName)
+	}
+}
+
 func TestUpdateSettings_ValidSiteName_Returns200AndPersists(t *testing.T) {
 	db := newTestDB(t)
 	handler := adminapi.UpdateSettings(db)

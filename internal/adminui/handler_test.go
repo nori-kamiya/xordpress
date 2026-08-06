@@ -17,13 +17,20 @@ func TestHandler_ServesIndexAtAdminRoot(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Admin UI") {
-		t.Fatalf("expected body to contain placeholder index.html content, got %q", rec.Body.String())
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("expected Content-Type text/html, got %q", ct)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatalf("expected non-empty body")
 	}
 }
 
 func TestHandler_FallsBackToIndexForUnknownSubpath(t *testing.T) {
 	h := Handler()
+
+	rootReq := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	rootRec := httptest.NewRecorder()
+	h.ServeHTTP(rootRec, rootReq)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/some/unknown/route", nil)
 	rec := httptest.NewRecorder()
@@ -32,8 +39,14 @@ func TestHandler_FallsBackToIndexForUnknownSubpath(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200 (SPA fallback), got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Admin UI") {
-		t.Fatalf("expected fallback body to contain index.html content, got %q", rec.Body.String())
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("expected Content-Type text/html, got %q", ct)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatalf("expected non-empty body")
+	}
+	if rec.Body.String() != rootRec.Body.String() {
+		t.Fatalf("expected fallback content to match /admin/ index content")
 	}
 }
 
