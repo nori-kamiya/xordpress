@@ -79,6 +79,22 @@ describe('Login', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ href: '/settings' }))
   })
 
+  it.each(['https://evil.example/phish', '//evil.example/phish', '/\\evil.example/phish'])(
+    'falls back to /posts instead of an open redirect for unsafe ?redirect=%s',
+    async (unsafeTarget) => {
+      searchParams = { redirect: unsafeTarget }
+      vi.mocked(login).mockResolvedValue(undefined)
+      const user = userEvent.setup()
+      render(<Login />)
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'ログイン' }))
+
+      await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/posts' }))
+      expect(navigateMock).not.toHaveBeenCalledWith({ href: unsafeTarget })
+    },
+  )
+
   it('shows an inline error and does not navigate on 401', async () => {
     vi.mocked(login).mockRejectedValue(new ApiError(401, 'unauthorized'))
     const user = userEvent.setup()

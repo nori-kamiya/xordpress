@@ -13,6 +13,19 @@ import { login } from '../api/session'
 import { ApiError } from '../api/client'
 import { toUserMessage } from '../api/errorMessages'
 
+/**
+ * ?redirect= はURLクエリパラメータであり攻撃者が完全に制御できる。
+ * 検証なしで navigate({href}) に渡すとオープンリダイレクトになる
+ * (例: /admin/login?redirect=https://evil.com や //evil.com、
+ * バックスラッシュを使った /\evil.com もブラウザによっては
+ * プロトコル相対URLとして外部ホストへ解釈される)。
+ * このアプリ内の絶対パス(単一の先頭スラッシュで始まり、それ以外の
+ * スラッシュ/バックスラッシュが続かない)のみを許可する。
+ */
+function isSafeRedirectTarget(target: string): boolean {
+  return target.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\')
+}
+
 export default function Login() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -29,7 +42,7 @@ export default function Login() {
     try {
       await login({ username, password })
       await queryClient.invalidateQueries({ queryKey: ['posts'] })
-      if (search.redirect !== undefined) {
+      if (search.redirect !== undefined && isSafeRedirectTarget(search.redirect)) {
         void navigate({ href: search.redirect })
       } else {
         void navigate({ to: '/posts' })
