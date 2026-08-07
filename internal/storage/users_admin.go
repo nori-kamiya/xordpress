@@ -243,3 +243,26 @@ func DeleteUserCascadeTx(tx *sql.Tx, id int64, reassignTo int64, actorID int64) 
 	}
 	return nil
 }
+
+// ResetUserMFATx clears every MFA registration and in-progress state for
+// id: TOTP secret, recovery codes, lockout counters, and any pending login
+// challenge. Used by DELETE /api/users/{id}/mfa (design.md §5) as the
+// lockout-recovery path when a user loses their authenticator and their
+// recovery codes. Unlike DeleteUserCascadeTx it does not touch users,
+// posts, sessions, or login_failures — the account itself is untouched,
+// only its 2FA enrollment.
+func ResetUserMFATx(tx *sql.Tx, id int64) error {
+	if _, err := tx.Exec(`DELETE FROM user_totp WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("storage: reset user mfa: delete user_totp: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM mfa_recovery_codes WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("storage: reset user mfa: delete mfa_recovery_codes: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM mfa_failures WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("storage: reset user mfa: delete mfa_failures: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM mfa_challenges WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("storage: reset user mfa: delete mfa_challenges: %w", err)
+	}
+	return nil
+}

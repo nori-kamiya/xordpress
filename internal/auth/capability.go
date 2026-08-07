@@ -35,3 +35,12 @@ var roleCaps = map[Role]Capability{
 // no entry in roleCaps, so the zero-value map lookup returns CapNone and Has
 // always returns false — fail closed.
 func (r Role) Has(c Capability) bool { return roleCaps[r]&c == c }
+
+// IsValidRole reports whether r is one of the four known roles, so callers
+// accepting a role string from a request body (e.g. POST/PATCH /api/users)
+// can reject unknown values with 400 instead of persisting a role that maps
+// to no capabilities.
+func IsValidRole(r Role) bool {
+	_, ok := roleCaps[r]
+	return ok
+}

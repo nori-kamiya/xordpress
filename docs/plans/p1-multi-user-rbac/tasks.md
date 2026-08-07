@@ -92,7 +92,14 @@ T12,T13 → T17(フロントエンド: 2FA登録・ログイン2段階画面)
 - depends on: T3, T5, T6
 - files: `internal/adminapi/users.go`(新規)、`internal/adminapi/handler.go`(修正)
 - what: design.md §5の`GET/POST /api/users`、`GET/PATCH/DELETE /api/users/{id}`、`DELETE /api/users/{id}/mfa`を実装(全て`CapUsersManage`)。POST bodyの`role`検証(未知ロールは400)。DELETE の`reassign_to`必須・自己参照400・存在しないID400(T5のエラー型を判定してマッピング)。PATCH bodyは`{role}`および任意で`{password}`(admin reset時は`DeleteSessionsByUserID`呼び出し)。
-- verify: `go test ./internal/adminapi/... -run TestUsers`。最後の管理者削除/降格が409、reassign_to不備が400、CapUsersManage以外のロールで呼ぶと403になることをテーブルテストで確認。
+- verify: `go test ./internal/adminapi/... -run TestUsers`。reassign_to不備が400、CapUsersManage以外のロールで呼ぶと403になることをテーブルテストで確認。**実装時の訂正**: 「最後の管理者削除/降格が409」はCapUsersManageがadministrator限定のため、それを呼べるactorは常に自分もadministratorであり、`CountAdministratorsExceptTx(target)`がactor自身を除外しない限り0にはならない(actor==targetの場合はErrLastAdminより先にErrSelfTargetが発火する)。つまりこの409はシーケンシャルなAPI呼び出しでは構造的に再現不能で、design.md §6.2が言及する同時降格レースでのみ意味を持つ(T6の`TestLastAdmin`がstorage層で検証済み)。T9のテストでは代わりに「唯一の管理者が自分自身を削除/降格しようとしてErrSelfTargetで409になる」ケースを検証している。
+
+## T9b: `GET /api/account`の欠落(T15着手前に必要)
+- depends on: T9
+- files: `internal/adminapi/account.go`(修正)、`internal/adminapi/routes.go`(修正)、`internal/auth/capability.go`(修正、Capability→名前の対応表)
+- what: design.md §5の`GET /api/account`(`CapSelfManage`)が未実装(T9はユーザー管理側`/api/users`のみを実装し、自分自身の状態を返すこのエンドポイントは含まれていなかった)。T15(フロントエンドのユーザー管理画面)が`useCurrentUser`フックの取得元として依存する。`{id,username,role,capabilities:[...]}`を返す。`capabilities`は`auth.Capability`ビットフラグを文字列名の配列に変換する必要があり、そのための名前対応表(例: `CapPostsRead`→`"posts:read"`)を`internal/auth`に新設する。
+- verify: `go test ./internal/adminapi/... -run TestAccount`。ロールごとに期待される`capabilities`配列が返ることをテーブルテストで確認。
+- executor: sonnet
 - executor: main (認可境界に関わるため設計判断込みで実装)
 
 ## T10: MFA関連テーブルの追加
