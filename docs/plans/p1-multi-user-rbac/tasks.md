@@ -9,6 +9,7 @@ T1(role列+CHECK)
  → T2(Capability/Role, roleCaps map)
    → T3(routeテーブル化 + requireCap + AuthMiddleware context格納)
      → T4(currentPrincipal + posts.go authDB化) ─┐
+       → T4b(CreatePost/UpdatePostのCapPostsPublish強制)
      → T5(ユーザーCRUD storage層: *sql.Tx版)      ├→ T9(POST/GET/PATCH/DELETE /api/users)
        → T6(最後の管理者保護: 削除+降格の同トランザクション化) ┘
 T1 → T7(sessions_meta列 0004)
@@ -22,7 +23,7 @@ T8 → T16(フロントエンド: セッション管理画面)
 T12,T13 → T17(フロントエンド: 2FA登録・ログイン2段階画面)
 ```
 
-並列可能: T7とT2、T10とT4/T5、T14は他タスクと独立(T3完了後ならいつでも)。フロントエンド3本(T15/T16/T17)は対応するバックエンドが完了すれば並列可。
+並列可能: T7とT2、T10とT4/T5、T14は他タスクと独立(T3完了後ならいつでも)。フロントエンド3本(T15/T16/T17)は対応するバックエンドが完了すれば並列可。T4bはT4完了後いつでも(T5/T6/T9とは独立)。
 
 ## T1: roleカラムの追加とバックフィル
 - depends on: なし
@@ -50,6 +51,13 @@ T12,T13 → T17(フロントエンド: 2FA登録・ログイン2段階画面)
 - files: `internal/auth/session.go`(修正、`ValidateSessionWithRole`追加)、`internal/adminapi/posts.go`(修正)、`internal/adminapi/handler.go`(修正)、`internal/adminapi/posts_test.go`(修正)
 - what: design.md §4の`currentPrincipal`実装(contextから読み取り、フォールバックは`ValidateSessionWithRole`)。`UpdatePost`/`DeletePost`/`GetPost`に`authDB *sql.DB`引数を追加し、ハンドラ内で`post.AuthorID != principal.UserID && !principal.Role.Has(auth.CapPostsEditOthers)`のownershipチェックを追加。`handler.go`の該当行に`authDB`を渡すよう修正。
 - verify: `go test ./internal/adminapi/... -run TestPost`。他ユーザーの記事編集が403になる新規テストが通り、既存の`posts_test.go`は引数追加のみで挙動不変であることを確認。
+- executor: sonnet
+
+## T4b: CreatePost/UpdatePostのCapPostsPublish強制
+- depends on: T4
+- files: `internal/adminapi/posts.go`(修正)、`internal/adminapi/posts_test.go`(修正)
+- what: 実装中に発見されたタスク分解の抜け(design.md §4に追記済み)。`routes.go`は`POST /api/posts`・`PUT /api/posts/{id}`を`CapPostsEditOwn`でしか保護しておらず、`CapPostsPublish`はどのハンドラでも検証されていない。`CreatePost`/`UpdatePost`のハンドラ内で、`req.Status == "published"`かつ`principal.Role.Has(auth.CapPostsPublish)`がfalseの場合に403を返すチェックを追加する(`UpdatePost`はT4で追加済みの`currentPrincipal`呼び出しの結果をそのまま使う。`CreatePost`は現状`currentUserID`のみ呼んでいるため、`currentPrincipal`呼び出しを追加する必要がある)。
+- verify: `go test ./internal/adminapi/... -run TestPost`。contributor/authorが`status:"published"`でPOST/PUTすると403になり、editor/administratorは成功することをテーブルテストで確認。既存の(全てadministratorとして実行される)posts_testが引き続き成功すること。
 - executor: sonnet
 
 ## T5: ユーザーCRUDのstorage層(*sql.Tx版)

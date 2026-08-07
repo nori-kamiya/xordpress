@@ -209,6 +209,8 @@ func currentPrincipal(r *http.Request, authDB *sql.DB) (auth.Principal, bool) {
 
 **記事の所有権(row-level)はルート権限では表現しない**: `CapPostsEditOthers`を持たないロールが自分の記事以外を編集しようとした場合は、ハンドラ内で`post.AuthorID != principal.UserID && !principal.Role.Has(auth.CapPostsEditOthers)`を明示的にチェックする(3候補全てがここをハンドラ内if文としており、構造的な保証はない — §7で明記)。
 
+**公開(`status:"published"`)もルート権限では表現しない**: `POST /api/posts`・`PUT /api/posts/{id}`のルート権限は`CapPostsEditOwn`であり、これはcontributor/authorも持つ。しかし`CapPostsPublish`はeditor/administrator限定であるべき(roleCapsの定義通り)。body依存の権限のため`requireCap`(ルート単位)では構造的に検証できず、所有権チェックと同じくハンドラ内チェックが必要: リクエストの`Status`が`"published"`で、かつ`principal.Role.Has(auth.CapPostsPublish)`がfalseの場合は403を返す(作成・更新の両方)。これを怠ると、`CapPostsEditOwn`のみを持つロールがbody操作だけで公開状態の記事を作成できてしまう(実装時に発見されたギャップ、tasks.md T4bで対応)。
+
 ## 5. API contracts
 
 | エンドポイント | 権限 | 備考 |
