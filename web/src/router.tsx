@@ -12,6 +12,7 @@ import PostsIndex from './routes/posts.index'
 import PostsNew from './routes/posts.new'
 import PostsEdit from './routes/posts.edit'
 import Settings from './routes/settings'
+import AccountSessions from './routes/account.sessions'
 
 const rootRoute = createRootRoute({
   component: Root,
@@ -63,6 +64,12 @@ const settingsRoute = createRoute({
   component: Settings,
 })
 
+const accountSessionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/account/sessions',
+  component: AccountSessions,
+})
+
 const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
@@ -70,6 +77,7 @@ const routeTree = rootRoute.addChildren([
   postsNewRoute,
   postsEditRoute,
   settingsRoute,
+  accountSessionsRoute,
 ])
 
 // design.md §9: vite.config.ts の base:'/admin/' と対になる制約。
