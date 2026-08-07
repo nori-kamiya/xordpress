@@ -73,6 +73,9 @@ func TestGetUserByIDTx_NotFound(t *testing.T) {
 	}
 }
 
+// TestUpdateUserRoleTx_UpdatesRole demotes user 1, acting as a second
+// administrator (user 2) so the demotion does not trip the last-admin
+// guard.
 func TestUpdateUserRoleTx_UpdatesRole(t *testing.T) {
 	db := newTestDB(t)
 
@@ -80,7 +83,11 @@ func TestUpdateUserRoleTx_UpdatesRole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	if err := storage.UpdateUserRoleTx(tx, 1, "editor"); err != nil {
+	actorID, err := storage.CreateUserTx(tx, "admin-2", "hash", "administrator")
+	if err != nil {
+		t.Fatalf("CreateUserTx: %v", err)
+	}
+	if err := storage.UpdateUserRoleTx(tx, 1, "editor", actorID); err != nil {
 		t.Fatalf("UpdateUserRoleTx: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -105,8 +112,44 @@ func TestUpdateUserRoleTx_NotFound(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if err := storage.UpdateUserRoleTx(tx, 999, "editor"); !errors.Is(err, storage.ErrNotFound) {
+	if err := storage.UpdateUserRoleTx(tx, 999, "editor", 1); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("UpdateUserRoleTx() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestLastAdminProtection_SelfDemote_ReturnsErrSelfTarget(t *testing.T) {
+	db := newTestDB(t)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	if err := storage.UpdateUserRoleTx(tx, 1, "editor", 1); !errors.Is(err, storage.ErrSelfTarget) {
+		t.Fatalf("UpdateUserRoleTx() error = %v, want ErrSelfTarget", err)
+	}
+}
+
+// TestLastAdminProtection_DemoteSoleAdmin_ReturnsErrLastAdmin demotes the sole
+// administrator (user 1), acting as a non-administrator second user, and
+// expects ErrLastAdmin.
+func TestLastAdminProtection_DemoteSoleAdmin_ReturnsErrLastAdmin(t *testing.T) {
+	db := newTestDB(t)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	actorID, err := storage.CreateUserTx(tx, "editor-1", "hash", "editor")
+	if err != nil {
+		t.Fatalf("CreateUserTx: %v", err)
+	}
+
+	if err := storage.UpdateUserRoleTx(tx, 1, "editor", actorID); !errors.Is(err, storage.ErrLastAdmin) {
+		t.Fatalf("UpdateUserRoleTx() error = %v, want ErrLastAdmin", err)
 	}
 }
 
@@ -150,7 +193,7 @@ func TestDeleteUserCascadeTx_SelfReassign_ReturnsError(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if err := storage.DeleteUserCascadeTx(tx, 1, 1); !errors.Is(err, storage.ErrSelfReassign) {
+	if err := storage.DeleteUserCascadeTx(tx, 1, 1, 2); !errors.Is(err, storage.ErrSelfReassign) {
 		t.Fatalf("DeleteUserCascadeTx() error = %v, want ErrSelfReassign", err)
 	}
 }
@@ -164,7 +207,7 @@ func TestDeleteUserCascadeTx_ReassignTargetNotFound_ReturnsError(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if err := storage.DeleteUserCascadeTx(tx, 1, 999); !errors.Is(err, storage.ErrReassignTargetNotFound) {
+	if err := storage.DeleteUserCascadeTx(tx, 1, 999, 2); !errors.Is(err, storage.ErrReassignTargetNotFound) {
 		t.Fatalf("DeleteUserCascadeTx() error = %v, want ErrReassignTargetNotFound", err)
 	}
 }
@@ -178,8 +221,74 @@ func TestDeleteUserCascadeTx_UserNotFound_ReturnsError(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if err := storage.DeleteUserCascadeTx(tx, 999, 1); !errors.Is(err, storage.ErrNotFound) {
+	if err := storage.DeleteUserCascadeTx(tx, 999, 1, 2); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("DeleteUserCascadeTx() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestLastAdminProtection_SelfDelete_ReturnsErrSelfTarget(t *testing.T) {
+	db := newTestDB(t)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	if err := storage.DeleteUserCascadeTx(tx, 1, 2, 1); !errors.Is(err, storage.ErrSelfTarget) {
+		t.Fatalf("DeleteUserCascadeTx() error = %v, want ErrSelfTarget", err)
+	}
+}
+
+// TestLastAdminProtection_DeleteSoleAdmin_ReturnsErrLastAdmin deletes the sole
+// administrator (user 1), acting as a non-administrator second user, and
+// expects ErrLastAdmin.
+func TestLastAdminProtection_DeleteSoleAdmin_ReturnsErrLastAdmin(t *testing.T) {
+	db := newTestDB(t)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	actorID, err := storage.CreateUserTx(tx, "editor-1", "hash", "editor")
+	if err != nil {
+		t.Fatalf("CreateUserTx: %v", err)
+	}
+
+	if err := storage.DeleteUserCascadeTx(tx, 1, actorID, actorID); !errors.Is(err, storage.ErrLastAdmin) {
+		t.Fatalf("DeleteUserCascadeTx() error = %v, want ErrLastAdmin", err)
+	}
+}
+
+// TestLastAdminProtection_SecondAdminExists_DeleteSucceeds deletes an
+// administrator when a second administrator exists, and expects success.
+func TestLastAdminProtection_SecondAdminExists_DeleteSucceeds(t *testing.T) {
+	db := newTestDB(t)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	actorID, err := storage.CreateUserTx(tx, "admin-2", "hash", "administrator")
+	if err != nil {
+		t.Fatalf("CreateUserTx: %v", err)
+	}
+
+	if err := storage.DeleteUserCascadeTx(tx, 1, actorID, actorID); err != nil {
+		t.Fatalf("DeleteUserCascadeTx: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM users WHERE id = 1`).Scan(&count); err != nil {
+		t.Fatalf("query users: %v", err)
+	}
+	if count != 0 {
+		t.Error("user 1 was not deleted")
 	}
 }
 
@@ -216,7 +325,7 @@ func TestDeleteUserCascadeTx_RemovesAllRelatedRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	if err := storage.DeleteUserCascadeTx(tx, targetID, 1); err != nil {
+	if err := storage.DeleteUserCascadeTx(tx, targetID, 1, 1); err != nil {
 		t.Fatalf("DeleteUserCascadeTx: %v", err)
 	}
 	if err := tx.Commit(); err != nil {

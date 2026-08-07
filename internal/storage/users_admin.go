@@ -26,6 +26,17 @@ var (
 	// ErrReassignTargetNotFound is returned by DeleteUserCascadeTx when
 	// reassignTo does not name an existing user.
 	ErrReassignTargetNotFound = errors.New("storage: reassign target user not found")
+
+	// ErrLastAdmin is returned by DeleteUserCascadeTx and UpdateUserRoleTx
+	// when the operation would leave the installation with zero
+	// administrators.
+	ErrLastAdmin = errors.New("storage: cannot remove the last administrator")
+
+	// ErrSelfTarget is returned by DeleteUserCascadeTx and UpdateUserRoleTx
+	// when id == actorID: self-deletion/self-role-change must go through
+	// the self-service account endpoints (CapSelfManage), not the user
+	// management endpoints (CapUsersManage).
+	ErrSelfTarget = errors.New("storage: cannot target your own account")
 )
 
 // AdminUser is the persisted representation of a user row including role,
@@ -111,19 +122,39 @@ func GetUserByIDTx(tx *sql.Tx, id int64) (*AdminUser, error) {
 	return u, nil
 }
 
-// UpdateUserRoleTx sets the role for the user with the given id. Returns
-// ErrNotFound if no such user exists.
-func UpdateUserRoleTx(tx *sql.Tx, id int64, role string) error {
-	res, err := tx.Exec(`UPDATE users SET role = ? WHERE id = ?`, role, id)
-	if err != nil {
-		return fmt.Errorf("storage: update user role: %w", err)
+// UpdateUserRoleTx sets the role for the user with the given id, acting on
+// behalf of actorID. Returns ErrSelfTarget if id == actorID, ErrNotFound if
+// no such user exists, and ErrLastAdmin if id is currently the sole
+// administrator and role is not "administrator" (design.md §6.2: this
+// check and the UPDATE run in the same transaction so two concurrent
+// demotions of two different administrators cannot both observe "another
+// administrator exists" and leave zero).
+func UpdateUserRoleTx(tx *sql.Tx, id int64, role string, actorID int64) error {
+	if id == actorID {
+		return ErrSelfTarget
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("storage: update user role: %w", err)
-	}
-	if n == 0 {
+
+	var currentRole string
+	err := tx.QueryRow(`SELECT role FROM users WHERE id = ?`, id).Scan(&currentRole)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("storage: update user role: lookup current role: %w", err)
+	}
+
+	if currentRole == "administrator" && role != "administrator" {
+		count, err := CountAdministratorsExceptTx(tx, id)
+		if err != nil {
+			return fmt.Errorf("storage: update user role: count administrators: %w", err)
+		}
+		if count == 0 {
+			return ErrLastAdmin
+		}
+	}
+
+	if _, err := tx.Exec(`UPDATE users SET role = ? WHERE id = ?`, role, id); err != nil {
+		return fmt.Errorf("storage: update user role: %w", err)
 	}
 	return nil
 }
@@ -141,22 +172,26 @@ func CountAdministratorsExceptTx(tx *sql.Tx, excludeID int64) (int, error) {
 	return count, nil
 }
 
-// DeleteUserCascadeTx deletes the user with the given id, reassigning their
-// posts to reassignTo first (design.md §6.2: posts.author_id and
-// sessions.user_id are REFERENCES users(id) with the default RESTRICT
-// action, so deleting a user without reassigning their posts fails with a
-// foreign key violation).
+// DeleteUserCascadeTx deletes the user with the given id, acting on behalf
+// of actorID, reassigning their posts to reassignTo first (design.md §6.2:
+// posts.author_id and sessions.user_id are REFERENCES users(id) with the
+// default RESTRICT action, so deleting a user without reassigning their
+// posts fails with a foreign key violation).
 //
-// Returns ErrSelfReassign if reassignTo == id, ErrReassignTargetNotFound if
-// reassignTo does not name an existing user, and ErrNotFound if id does not
-// name an existing user. Last-administrator protection is added by T6.
-func DeleteUserCascadeTx(tx *sql.Tx, id int64, reassignTo int64) error {
+// Returns ErrSelfTarget if id == actorID, ErrSelfReassign if reassignTo ==
+// id, ErrReassignTargetNotFound if reassignTo does not name an existing
+// user, ErrNotFound if id does not name an existing user, and ErrLastAdmin
+// if id is the sole administrator.
+func DeleteUserCascadeTx(tx *sql.Tx, id int64, reassignTo int64, actorID int64) error {
+	if id == actorID {
+		return ErrSelfTarget
+	}
 	if reassignTo == id {
 		return ErrSelfReassign
 	}
 
-	var username string
-	err := tx.QueryRow(`SELECT username FROM users WHERE id = ?`, id).Scan(&username)
+	var username, role string
+	err := tx.QueryRow(`SELECT username, role FROM users WHERE id = ?`, id).Scan(&username, &role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -170,6 +205,16 @@ func DeleteUserCascadeTx(tx *sql.Tx, id int64, reassignTo int64) error {
 	}
 	if reassignExists == 0 {
 		return ErrReassignTargetNotFound
+	}
+
+	if role == "administrator" {
+		count, err := CountAdministratorsExceptTx(tx, id)
+		if err != nil {
+			return fmt.Errorf("storage: delete user cascade: count administrators: %w", err)
+		}
+		if count == 0 {
+			return ErrLastAdmin
+		}
 	}
 
 	if _, err := tx.Exec(`UPDATE posts SET author_id = ? WHERE author_id = ?`, reassignTo, id); err != nil {
