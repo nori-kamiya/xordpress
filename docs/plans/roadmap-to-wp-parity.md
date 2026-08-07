@@ -6,10 +6,12 @@
 ## 進捗(セッション再開用)
 
 - **P0(4項目)は完了・実機確認済み。** コミット: `70439b4`(autoescape)、`f686edf`(パスワード変更)、`1ca92b4`(ログインロックアウト)、`264c825`(401/403 JSON統一)。
-- **P1(5〜8: マルチユーザー・権限モデル)は`/design`→`/breakdown`まで完了、実装未着手。**
-  - 設計: `docs/plans/p1-multi-user-rbac/design.md`。4項目(複数管理者CRUD、capability-basedロール/権限モデル、TOTP 2FA、セッション管理)をまとめて1件として設計(ユーザー選択)。architect 3種(simplest-possible/security-strictness-first/migration-risk-first)並列生成→critic judgeでmigration-risk-first案を採用→Opus 5とFableによる独立REFUTEレビューを2ラウンド実施し、発見された欠陥(ロールバック時のroleデフォルト値バグ、`mfa_challenges`のFK未処理カスケード、`mfa_failures`ロック未チェック、CSRF記述の内部矛盾、app.goトップレベルmuxバイパスの過大な主張、記事所有権チェックに必要なRole伝播の欠落、降格処理の競合)を全て反映済み。
-  - タスク分解: `docs/plans/p1-multi-user-rbac/tasks.md`(T1〜T17、依存関係順)。
-  - **次のアクション: T1(roleカラム追加マイグレーション`0003_user_roles.sql`)。** 指示書を`.claude/handoffs/p1-t1-user-roles/{instructions,acceptance}.md`に作成済み(gitignore対象、リポジトリ非コミット)。実装はまだ行っていない。新しいセッションで再開する場合は、まず`docs/plans/p1-multi-user-rbac/design.md`と`tasks.md`を読み、`.claude/handoffs/p1-t1-user-roles/instructions.md`の指示書に従ってT1から着手する(T3・T9・T12は設計判断を伴うため高コストモデルでの実装を推奨、tasks.md参照)。
+- **P1(5〜8: マルチユーザー・権限モデル)は`/design`→`/breakdown`完了、実装はT1〜T6・T10・T4bまで完了・レビュー済み。**
+  - 設計: `docs/plans/p1-multi-user-rbac/design.md`。タスク分解: `docs/plans/p1-multi-user-rbac/tasks.md`(T1〜T17、依存関係順)。
+  - **完了分(コミット順)**: `a8813ca` T1(role列+CHECK、`0003_user_roles.sql`) → `c45ac2a` T2(Capability/Role、`internal/auth/capability.go`) → `068bf83` T3(routeテーブル化+requireCap+Principal格納) → `e6c32b9` T4(currentPrincipal化+記事所有権チェック) → `62fdc09`+`bf38b04` T4b(CapPostsPublish未強制のギャップ発見・design.md/tasks.mdに追記・修正、実装中に発見しタスク分解へ追加した項目) → `5db1a7e` T10(MFAテーブル`0005_mfa.sql`、design順を訂正しT5より先行実施 — T5のカスケード削除がこれらのテーブルに依存するため) → `7203f69` T5(ユーザーCRUD storage層) → `e006e28` T6(最後の管理者保護) → `62868b7`(レビュー指摘対応、godocのチェック順修正+明示テスト追加)。
+  - **レビュー結果(`0cfec25...62868b7`)**: correctness/edge-cases・security/data-safety・contracts/testsの3系統で`code-reviewer`エージェントによる並列レビュー実施、いずれも**merge-ready**。指摘は2件ともminor(`GetPost`の未使用`authDB`引数は設計上意図的なプレースホルダーと確認、`DeleteUserCascadeTx`のgodocチェック順の記載ずれは修正済み)。critical/major指摘なし。
+  - **次のアクション: T7(sessionsメタデータ列`0004_sessions_meta.sql`、depends on: T1のみ)。** tasks.mdのT7セクション参照。T7完了後はT8(セッション一覧/失効API)へ。T9(ユーザーCRUD API)はT3,T5,T6に依存し着手可能(executor: main推奨、認可境界に関わる設計判断を伴うため)。T11〜T13(TOTP/2FA)はT10完了済みのため着手可能。T14(CSRFのPATCH対応)はT3完了済みのためいつでも着手可能で他タスクと独立。T15〜T17(フロントエンド)は対応するバックエンドAPI完了後。
+  - 新しいセッションで再開する場合は、本ファイルのこの節と`tasks.md`のT7以降を読めば着手できる(`.claude/handoffs/`配下の個別指示書はT1のみ・gitignore対象で現存しない可能性がある)。
 - P2の12(コメント)着手前に「実装するか自体」の要確認が必要、という指示は未消化のまま残っている。
 
 ## 前提: WordPressが脆弱になりがちな理由への対抗設計原則
