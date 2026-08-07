@@ -26,6 +26,24 @@ const ERROR_MESSAGES: Record<string, string> = {
   'current password is incorrect': '現在のパスワードが正しくありません。',
   'too many failed login attempts, try again later': 'ログイン試行回数が多すぎます。しばらくしてから再度お試しください。',
 
+  // internal/adminapi/users.go
+  'invalid role': 'ロールの指定が正しくありません。',
+  'username already taken': 'このユーザー名は既に使用されています。',
+  'cannot change your own role': '自分自身のロールは変更できません。',
+  'not found': '対象が見つかりません。',
+  'cannot remove the last administrator': '最後の管理者は削除・降格できません。',
+  'reassign_to is required': '記事の引き継ぎ先ユーザーを指定してください。',
+  'cannot delete your own account': '自分自身のアカウントは削除できません。',
+  'reassign_to cannot equal the deleted user': '引き継ぎ先には削除対象以外のユーザーを指定してください。',
+  'reassign_to user not found': '引き継ぎ先のユーザーが見つかりません。',
+
+  // internal/adminapi/totp.go, session_mfa.go
+  'incorrect password': 'パスワードが正しくありません。',
+  '2FA is already enabled; disable it before re-enrolling': '2段階認証は既に有効です。再登録する前に無効化してください。',
+  'invalid code': 'コードが正しくありません。',
+  'no pending enrollment': '登録中の2段階認証がありません。',
+  'too many failed 2FA attempts, try again later': '2段階認証の試行回数が多すぎます。しばらくしてから再度お試しください。',
+
   // internal/auth/middleware.go: http.Error 経由(プレーンテキスト、apiFetchが末尾の改行をtrim済み)
   unauthorized: '認証が必要です。再度ログインしてください。',
   forbidden: 'この操作は許可されていません。',

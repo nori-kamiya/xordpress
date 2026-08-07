@@ -39,7 +39,7 @@ export function configureApiClient(config: ApiClientConfig): void {
 }
 
 export interface ApiFetchInit {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   headers?: Record<string, string>
   body?: string
   signal?: AbortSignal
