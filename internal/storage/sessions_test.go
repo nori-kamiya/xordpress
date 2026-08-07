@@ -10,7 +10,7 @@ import (
 func TestInsertAndGetSessionRoundTrip(t *testing.T) {
 	db := newTestDB(t)
 
-	if err := storage.InsertSession(db, "tokenhash1", 1, 9999999999); err != nil {
+	if err := storage.InsertSession(db, "tokenhash1", 1, 9999999999, "", ""); err != nil {
 		t.Fatalf("InsertSession: %v", err)
 	}
 
@@ -35,7 +35,7 @@ func TestGetSessionByTokenHashNotFound(t *testing.T) {
 func TestDeleteSession(t *testing.T) {
 	db := newTestDB(t)
 
-	if err := storage.InsertSession(db, "tokenhash2", 1, 9999999999); err != nil {
+	if err := storage.InsertSession(db, "tokenhash2", 1, 9999999999, "", ""); err != nil {
 		t.Fatalf("InsertSession: %v", err)
 	}
 

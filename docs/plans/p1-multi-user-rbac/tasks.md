@@ -76,8 +76,8 @@ T12,T13 → T17(フロントエンド: 2FA登録・ログイン2段階画面)
 
 ## T7: sessionsメタデータ列の追加
 - depends on: T1
-- files: `internal/storage/migrations/0004_sessions_meta.sql`(新規)
-- what: design.md §3の`0004_sessions_meta.sql`をそのまま作成(`user_agent`/`created_ip`列+`idx_sessions_user`インデックス)。`auth.IssueSession`が`userAgent, ip string`を受け取り保存するよう拡張。
+- files: `internal/storage/migrations/0006_sessions_meta.sql`(新規、実装順の訂正で当初の`0004`から改番 — design.md §3参照)
+- what: design.md §3の`0006_sessions_meta.sql`をそのまま作成(`user_agent`/`created_ip`列+`idx_sessions_user`インデックス)。`auth.IssueSession`が`userAgent, ip string`を受け取り保存するよう拡張。
 - verify: `go test ./internal/storage/... ./internal/auth/...`。既存セッション行(列がNULL)が引き続き`ValidateSession`で有効に検証されることを確認する回帰テスト。
 - executor: sonnet
 

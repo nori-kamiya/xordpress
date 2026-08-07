@@ -36,7 +36,7 @@ func TestIssueSessionThenValidateSessionRoundTrip(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 
-	cookie, err := IssueSession(ctx, db, "https://example.com", 1)
+	cookie, err := IssueSession(ctx, db, "https://example.com", 1, "", "")
 	if err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestValidateSessionWithRoleReturnsPrincipal(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 
-	cookie, err := IssueSession(ctx, db, "https://example.com", 1)
+	cookie, err := IssueSession(ctx, db, "https://example.com", 1, "", "")
 	if err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestValidateSessionWithRoleWrongTokenFails(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 
-	if _, err := IssueSession(ctx, db, "http://localhost:8080", 1); err != nil {
+	if _, err := IssueSession(ctx, db, "http://localhost:8080", 1, "", ""); err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func TestIssueSessionSecureFlagFollowsBaseURLScheme(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 
-	cookie, err := IssueSession(ctx, db, "http://localhost:8080", 1)
+	cookie, err := IssueSession(ctx, db, "http://localhost:8080", 1, "", "")
 	if err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestValidateSessionWrongTokenFails(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 
-	if _, err := IssueSession(ctx, db, "http://localhost:8080", 1); err != nil {
+	if _, err := IssueSession(ctx, db, "http://localhost:8080", 1, "", ""); err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
 
@@ -138,12 +138,39 @@ func TestValidateSessionExpiredFails(t *testing.T) {
 	const rawToken = "expired-token"
 	pastExpiry := time.Now().Add(-1 * time.Hour).Unix()
 
-	if err := storage.InsertSession(db, hashSessionToken(rawToken), 1, pastExpiry); err != nil {
+	if err := storage.InsertSession(db, hashSessionToken(rawToken), 1, pastExpiry, "", ""); err != nil {
 		t.Fatalf("InsertSession: %v", err)
 	}
 
 	_, ok := ValidateSession(ctx, db, rawToken)
 	if ok {
 		t.Fatal("ValidateSession returned ok=true for an expired session")
+	}
+}
+
+// TestValidateSessionWithNullMetaColumnsSucceeds is a regression test for
+// 0004_sessions_meta.sql: session rows created before that migration (or via
+// direct INSERT without user_agent/created_ip) have those columns NULL, and
+// must continue to validate successfully rather than being force-logged-out.
+func TestValidateSessionWithNullMetaColumnsSucceeds(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	const rawToken = "legacy-token"
+	futureExpiry := time.Now().Add(1 * time.Hour).Unix()
+
+	if _, err := db.Exec(
+		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent, created_ip) VALUES (?, ?, ?, ?, NULL, NULL)`,
+		hashSessionToken(rawToken), 1, time.Now().Unix(), futureExpiry,
+	); err != nil {
+		t.Fatalf("insert legacy session: %v", err)
+	}
+
+	userID, ok := ValidateSession(ctx, db, rawToken)
+	if !ok {
+		t.Fatal("ValidateSession returned ok=false for a valid session with NULL meta columns")
+	}
+	if userID != 1 {
+		t.Fatalf("userID = %d, want 1", userID)
 	}
 }

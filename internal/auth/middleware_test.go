@@ -39,7 +39,7 @@ func okHandler() http.Handler {
 
 func TestAuthMiddlewareValidSessionPasses(t *testing.T) {
 	db := newTestDB(t)
-	cookie, err := IssueSession(t.Context(), db, "http://localhost:8080", 1)
+	cookie, err := IssueSession(t.Context(), db, "http://localhost:8080", 1, "", "")
 	if err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAuthMiddlewareValidSessionPasses(t *testing.T) {
 
 func TestAuthMiddlewareAttachesPrincipalToContext(t *testing.T) {
 	db := newTestDB(t)
-	cookie, err := IssueSession(t.Context(), db, "http://localhost:8080", 1)
+	cookie, err := IssueSession(t.Context(), db, "http://localhost:8080", 1, "", "")
 	if err != nil {
 		t.Fatalf("IssueSession: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestAuthMiddlewareExpiredSessionUnauthorized(t *testing.T) {
 
 	const rawToken = "expired-token"
 	pastExpiry := time.Now().Add(-1 * time.Hour).Unix()
-	if err := storage.InsertSession(db, hashSessionToken(rawToken), 1, pastExpiry); err != nil {
+	if err := storage.InsertSession(db, hashSessionToken(rawToken), 1, pastExpiry, "", ""); err != nil {
 		t.Fatalf("InsertSession: %v", err)
 	}
 

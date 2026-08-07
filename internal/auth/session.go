@@ -36,7 +36,10 @@ const sessionTokenBytes = 32
 // determined by baseURL's scheme (not the live connection's TLS state), so
 // it is correctly set even when XordPress runs behind a TLS-terminating
 // reverse proxy.
-func IssueSession(ctx context.Context, db *sql.DB, baseURL string, userID int64) (*http.Cookie, error) {
+//
+// userAgent and ip are persisted alongside the session for the session
+// listing UI (design.md §5, 0004_sessions_meta.sql) and may be empty.
+func IssueSession(ctx context.Context, db *sql.DB, baseURL string, userID int64, userAgent, ip string) (*http.Cookie, error) {
 	rawToken, err := generateSessionToken()
 	if err != nil {
 		return nil, fmt.Errorf("auth: generate session token: %w", err)
@@ -44,7 +47,7 @@ func IssueSession(ctx context.Context, db *sql.DB, baseURL string, userID int64)
 
 	expiresAt := time.Now().Add(sessionTTL)
 
-	if err := storage.InsertSession(db, hashSessionToken(rawToken), userID, expiresAt.Unix()); err != nil {
+	if err := storage.InsertSession(db, hashSessionToken(rawToken), userID, expiresAt.Unix(), userAgent, ip); err != nil {
 		return nil, fmt.Errorf("auth: issue session: %w", err)
 	}
 

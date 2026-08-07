@@ -17,11 +17,13 @@ type Session struct {
 }
 
 // InsertSession inserts a new session row for the given tokenHash/userID,
-// expiring at expiresAt. created_at is set to the current time.
-func InsertSession(db *sql.DB, tokenHash string, userID int64, expiresAt int64) error {
+// expiring at expiresAt. created_at is set to the current time. userAgent
+// and ip are stored as-is for the session listing UI (0004_sessions_meta.sql)
+// and may be empty.
+func InsertSession(db *sql.DB, tokenHash string, userID int64, expiresAt int64, userAgent, ip string) error {
 	_, err := db.Exec(
-		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
-		tokenHash, userID, time.Now().Unix(), expiresAt,
+		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent, created_ip) VALUES (?, ?, ?, ?, ?, ?)`,
+		tokenHash, userID, time.Now().Unix(), expiresAt, userAgent, ip,
 	)
 	if err != nil {
 		return fmt.Errorf("storage: insert session: %w", err)

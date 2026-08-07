@@ -32,6 +32,11 @@ func TestOpenAndMigrate_CreatesAllTables(t *testing.T) {
 	if err := db.QueryRow(`SELECT role FROM users LIMIT 1`).Scan(&role); err != nil && err != sql.ErrNoRows {
 		t.Errorf("query role column: %v", err)
 	}
+
+	var userAgent, createdIP sql.NullString
+	if err := db.QueryRow(`SELECT user_agent, created_ip FROM sessions LIMIT 1`).Scan(&userAgent, &createdIP); err != nil && err != sql.ErrNoRows {
+		t.Errorf("query sessions meta columns: %v", err)
+	}
 }
 
 func TestMigrate_IsIdempotentAcrossRestarts(t *testing.T) {

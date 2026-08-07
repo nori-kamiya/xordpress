@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"time"
 
@@ -57,7 +58,7 @@ func Login(contentDB *sql.DB, authDB *sql.DB, baseURL string) http.Handler {
 			return
 		}
 
-		cookie, err := auth.IssueSession(r.Context(), authDB, baseURL, userID)
+		cookie, err := auth.IssueSession(r.Context(), authDB, baseURL, userID, r.UserAgent(), clientIP(r))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -105,4 +106,15 @@ func Logout(authDB *sql.DB) http.Handler {
 func hashSessionToken(rawToken string) string {
 	sum := sha256.Sum256([]byte(rawToken))
 	return hex.EncodeToString(sum[:])
+}
+
+// clientIP returns r.RemoteAddr with its port stripped, for storage in
+// sessions.created_ip. Falls back to the raw value if it isn't in host:port
+// form (e.g. in tests using bare host strings).
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

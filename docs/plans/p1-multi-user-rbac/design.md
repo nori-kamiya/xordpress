@@ -56,9 +56,9 @@ UPDATE users SET role = 'administrator';
 ```
 既存行は全てこのマイグレーション実行時点で管理者だったユーザーなので、無条件に`administrator`へ補正する。`storage.CreateFirstAdmin`(`internal/storage/setup.go:46-49`)は、この段階のデプロイ後もroleを指定しないINSERTのままで正しく動作する(DEFAULTが`'administrator'`のため)。将来のユーザーCRUD実装時に、新規INSERT文では`role`を明示的に指定することを徹底する。
 
-**`0004_sessions_meta.sql`**
+**`0006_sessions_meta.sql`**(実装順の訂正 — 当初`0004`として設計されたが、T10のMFAテーブル追加(`0005_mfa.sql`)がT7より先に実施され出荷済みとなったため、実装時に`0006`へ改番した。`storage.Migrate`はファイル名の辞書順で`schema_migrations.version`を連番付与し、ファイル名の数値部分は解析しないため、既存DBが`0005_mfa.sql`をversion=4として記録済みの状態で数値の小さい`0004`を追記すると、そのversionが既適用扱いで永久にスキップされてしまう。詳細はマイグレーションファイル冒頭のコメント参照)
 ```sql
--- 0004_sessions_meta.sql
+-- 0006_sessions_meta.sql
 -- roadmap-to-wp-parity.md P1-8: セッション一覧UI用のメタデータ。
 -- last_seen_at は追加しない — SetMaxOpenConns(1) 下で認証済みリクエスト
 -- 毎に書き込みが発生するコストに対し、UI上の価値が低いため。
@@ -295,7 +295,7 @@ criticのJUDGE結果で3候補全てに共通して発見された欠落と、�
 4段階、各段階は前段階のバイナリに対して追記のみで後方互換:
 1. `0003_user_roles.sql` + 権限プラミング(ルートテーブル化)。既存の単一管理者は全権限を持つため、この時点で挙動は変化しない。
 2. 複数管理者CRUD追加(`POST /api/users`等)。`CreateFirstAdmin`のカウントガードは変更しない(セットアップ専用の一回性を維持、CRUD経路とは分離)。
-3. `0004_sessions_meta.sql` + セッション一覧/失効エンドポイント。既存`DeleteSessionsByUserID`をそのまま再利用。
+3. `0006_sessions_meta.sql`(実装順の訂正により改番、上記参照) + セッション一覧/失効エンドポイント。既存`DeleteSessionsByUserID`をそのまま再利用。
 4. `0005_mfa.sql` + TOTP(ユーザーごとオプトイン)。
 
 各段階はロールバック=直前バイナリの再デプロイで完結(ダウンマイグレーションなし、ADR-0006)。マイグレーションファイルは追記のみ(`migrate.go`がファイル名の並びからバージョンを算出するため、中間への挿入は後続の番号を全てずらしてしまう — 既存の運用ルール)。
