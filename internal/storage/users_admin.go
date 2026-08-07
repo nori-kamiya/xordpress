@@ -178,10 +178,10 @@ func CountAdministratorsExceptTx(tx *sql.Tx, excludeID int64) (int, error) {
 // default RESTRICT action, so deleting a user without reassigning their
 // posts fails with a foreign key violation).
 //
-// Returns ErrSelfTarget if id == actorID, ErrSelfReassign if reassignTo ==
-// id, ErrReassignTargetNotFound if reassignTo does not name an existing
-// user, ErrNotFound if id does not name an existing user, and ErrLastAdmin
-// if id is the sole administrator.
+// Checks run in this order, and the first failing one wins: ErrSelfTarget
+// (id == actorID), ErrSelfReassign (reassignTo == id), ErrNotFound (id does
+// not name an existing user), ErrReassignTargetNotFound (reassignTo does
+// not name an existing user), ErrLastAdmin (id is the sole administrator).
 func DeleteUserCascadeTx(tx *sql.Tx, id int64, reassignTo int64, actorID int64) error {
 	if id == actorID {
 		return ErrSelfTarget

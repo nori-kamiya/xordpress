@@ -212,6 +212,26 @@ func TestDeleteUserCascadeTx_ReassignTargetNotFound_ReturnsError(t *testing.T) {
 	}
 }
 
+// TestDeleteUserCascadeTx_ReassignTargetNotFoundTakesPrecedenceOverLastAdmin
+// pins the documented check order (godoc on DeleteUserCascadeTx): id=1 is
+// the sole administrator (would trigger ErrLastAdmin) AND reassignTo=999
+// does not exist (would trigger ErrReassignTargetNotFound). The structural
+// validation error must win so a caller always learns about a bad
+// reassign_to before a business-state conflict.
+func TestDeleteUserCascadeTx_ReassignTargetNotFoundTakesPrecedenceOverLastAdmin(t *testing.T) {
+	db := newTestDB(t)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	if err := storage.DeleteUserCascadeTx(tx, 1, 999, 2); !errors.Is(err, storage.ErrReassignTargetNotFound) {
+		t.Fatalf("DeleteUserCascadeTx() error = %v, want ErrReassignTargetNotFound (not ErrLastAdmin, even though id=1 is the sole administrator)", err)
+	}
+}
+
 func TestDeleteUserCascadeTx_UserNotFound_ReturnsError(t *testing.T) {
 	db := newTestDB(t)
 
