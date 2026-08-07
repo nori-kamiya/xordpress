@@ -61,7 +61,7 @@ T12,T13 → T17(フロントエンド: 2FA登録・ログイン2段階画面)
 - executor: sonnet
 
 ## T5: ユーザーCRUDのstorage層(*sql.Tx版)
-- depends on: T1
+- depends on: T1, T10(実装順の訂正 — 元の依存関係図はT10落ちだった。`DeleteUserCascadeTx`はdesign.md §6.2通り`user_totp`/`mfa_recovery_codes`/`mfa_failures`/`mfa_challenges`をDELETEするが、これらのテーブルはT10でしか作られない。T10を先に実装したためT5からも参照する)
 - files: `internal/storage/users_admin.go`(新規)、`internal/storage/users_admin_test.go`(新規)
 - what: `*sql.Tx`を第一引数に取る関数群: `CreateUserTx(tx, username, passwordHash, role) (int64, error)`、`ListUsersTx`/`ListUsers(db)`、`GetUserByIDTx`、`UpdateUserRoleTx(tx, id, role) error`、`CountAdministratorsExceptTx(tx, excludeID int64) (int, error)`(最後の管理者チェックで再利用)、`DeleteUserCascadeTx(tx, id, reassignTo int64) error`(design.md §6.2の(c)〜(f)を1関数に: posts再割当→sessions削除→login_failures削除(usernameで)→user_totp/mfa_recovery_codes/mfa_failures/mfa_challenges削除→users削除)。
 - verify: `go test ./internal/storage/... -run TestUsersAdmin`。カスケード削除後に関連テーブル全てに対象user_idの行が残っていないことをアサートする統合テスト、および`reassignTo`が存在しない/自己参照の場合にエラーを返すこと。

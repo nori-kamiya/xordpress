@@ -20,7 +20,7 @@ func TestOpenAndMigrate_CreatesAllTables(t *testing.T) {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
-	for _, table := range []string{"users", "posts", "sessions", "settings", "login_failures", "schema_migrations"} {
+	for _, table := range []string{"users", "posts", "sessions", "settings", "login_failures", "schema_migrations", "user_totp", "mfa_recovery_codes", "mfa_challenges", "mfa_failures"} {
 		var name string
 		err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
 		if err != nil {
@@ -98,5 +98,28 @@ func TestMigrate_BackfillsExistingUserToAdministrator(t *testing.T) {
 	}
 	if role != "administrator" {
 		t.Errorf("role = %q, want %q (DEFAULT must be administrator, not contributor — see 0003_user_roles.sql comment)", role, "administrator")
+	}
+}
+
+func TestMigrate_MFAChallengesEnforcesUserForeignKey(t *testing.T) {
+	dataDir := t.TempDir()
+
+	db, err := storage.Open(dataDir)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if err := storage.Migrate(db); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	const nonExistentUserID = 999
+	_, err = db.Exec(
+		`INSERT INTO mfa_challenges (token_hash, user_id, expires_at) VALUES (?, ?, ?)`,
+		"deadbeef", nonExistentUserID, 0,
+	)
+	if err == nil {
+		t.Fatal("expected a foreign key violation inserting mfa_challenges with a non-existent user_id, got nil error")
 	}
 }
