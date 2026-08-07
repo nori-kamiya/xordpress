@@ -38,6 +38,10 @@ func routes(contentDB, authDB *sql.DB) []routeEntry {
 
 		route("DELETE /api/session", auth.CapSelfManage, Logout(authDB)),
 		route("PUT /api/account/password", auth.CapSelfManage, ChangePassword(contentDB, authDB)),
+		route("GET /api/account/sessions", auth.CapSelfManage, ListSessions(authDB)),
+		route("DELETE /api/account/sessions/{id}", auth.CapSelfManage, DeleteOwnSession(authDB)),
+
+		route("DELETE /api/users/{id}/sessions", auth.CapUsersManage, DeleteUserSessions(contentDB, authDB)),
 
 		route("GET /api/settings", auth.CapSettingsManage, GetSettings(contentDB)),
 		route("PUT /api/settings", auth.CapSettingsManage, UpdateSettings(contentDB)),
