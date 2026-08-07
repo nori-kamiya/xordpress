@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/nori-kamiya/xordpress/internal/adminapi"
 	"github.com/nori-kamiya/xordpress/internal/auth"
+	"github.com/nori-kamiya/xordpress/internal/storage"
 )
 
 func itoa(id int64) string { return strconv.FormatInt(id, 10) }
@@ -204,11 +206,16 @@ func TestHandler_NonUsersManageRole_Returns403(t *testing.T) {
 func TestDeleteUserMFA_ResetsRegistration(t *testing.T) {
 	db := newTestDB(t)
 	target := seedUser(t, db, "editor-1", "password123", auth.RoleEditor)
+	enrollConfirmedTOTP(t, db, target)
 
 	id := itoa(target)
 	rec := doUsersRequest(t, adminapi.DeleteUserMFA(db), http.MethodDelete, "/api/users/"+id+"/mfa", id, nil, nil)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+
+	if _, err := storage.GetUserTOTP(db, target); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("GetUserTOTP after reset: err = %v, want ErrNotFound", err)
 	}
 }
 

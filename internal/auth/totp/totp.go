@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -44,6 +45,20 @@ func GenerateSecret() (string, error) {
 	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw), nil
 }
 
+// GenerateCode returns the TOTP code for secret at atStep, the inverse of
+// Validate. Server-side code generation isn't otherwise needed by the login
+// flow (only the authenticator app generates codes there), but it's the
+// only way to produce a real, secret-derived code for tests that exercise
+// Validate's success path without hand-rolling RFC 4226's HOTP algorithm a
+// second time.
+func GenerateCode(secret string, atStep int64) (string, error) {
+	key, err := decodeSecret(secret)
+	if err != nil {
+		return "", fmt.Errorf("totp: generate code: %w", err)
+	}
+	return hotp(key, uint64(atStep), digits), nil
+}
+
 // Validate reports whether code is a valid TOTP code for secret at atStep
 // or within ±1 step of it (RFC 6238 §5.2's recommended clock-skew
 // tolerance). On success it returns the exact step that matched, so
@@ -67,6 +82,12 @@ func Validate(secret, code string, atStep int64) (step int64, ok bool) {
 		}
 	}
 	return 0, false
+}
+
+// CurrentStep returns the TOTP step (floor(unixTime/period)) for t, for
+// callers that need to pass atStep to Validate.
+func CurrentStep(t time.Time) int64 {
+	return t.Unix() / period
 }
 
 // OTPAuthURI returns the otpauth://totp/... URI TOTP apps scan to enroll

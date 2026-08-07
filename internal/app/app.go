@@ -53,6 +53,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 
 	mux.Handle("POST /api/setup", adminapi.Setup(db, db, setupToken))
 	mux.Handle("POST /api/session", adminapi.Login(db, db, cfg.BaseURL))
+	mux.Handle("POST /api/session/mfa", adminapi.VerifyMFA(db, db, cfg.BaseURL))
 	mux.Handle("/api/", auth.CSRFMiddleware(cfg.BaseURL, auth.AuthMiddleware(db, adminapi.Handler(db, db))))
 
 	mux.Handle("/admin/", adminui.Handler())

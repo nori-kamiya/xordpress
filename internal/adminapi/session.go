@@ -2,8 +2,10 @@
 package adminapi
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -27,9 +29,13 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// Login returns the handler for POST /api/session (design.md §4). It
-// verifies username/password via auth.Authenticate (mismatch -> 401) and, on
-// success, issues a session cookie via auth.IssueSession and responds 204.
+// Login returns the handler for POST /api/session (design.md §4, §6.1). It
+// verifies username/password via auth.Authenticate (mismatch -> 401). If
+// the account has a confirmed TOTP registration, it does not issue a
+// session yet: it responds 200 {"mfa_required":true,"mfa_token":"..."} and
+// the caller must complete POST /api/session/mfa. Otherwise it issues a
+// session cookie via auth.IssueSession and responds 204, unchanged from
+// before 2FA existed.
 //
 // baseURL is required to build the session cookie's Secure attribute via
 // auth.IssueSession; the work order's Login(content, auth) signature omits
@@ -55,6 +61,35 @@ func Login(contentDB *sql.DB, authDB *sql.DB, baseURL string) http.Handler {
 		}
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		totpReg, err := storage.GetUserTOTP(contentDB, userID)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if err == nil && totpReg.ConfirmedAt != nil {
+			locked, err := storage.IsMFALocked(authDB, userID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if locked {
+				writeError(w, http.StatusTooManyRequests, "too many failed 2FA attempts, try again later")
+				return
+			}
+
+			rawToken, err := generateMFAToken()
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if err := storage.CreateMFAChallenge(authDB, hashSessionToken(rawToken), userID); err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"mfa_required": true, "mfa_token": rawToken})
 			return
 		}
 
@@ -106,6 +141,21 @@ func Logout(authDB *sql.DB) http.Handler {
 func hashSessionToken(rawToken string) string {
 	sum := sha256.Sum256([]byte(rawToken))
 	return hex.EncodeToString(sum[:])
+}
+
+// mfaTokenBytes is the number of random bytes used for a raw mfa_token
+// before base64 encoding, matching auth's session token size.
+const mfaTokenBytes = 32
+
+// generateMFAToken returns a fresh cryptographically random mfa_token,
+// URL-safe base64 encoded, matching auth.generateSessionToken's scheme (not
+// reused directly since that function is unexported).
+func generateMFAToken() (string, error) {
+	buf := make([]byte, mfaTokenBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 // clientIP returns r.RemoteAddr with its port stripped, for storage in
