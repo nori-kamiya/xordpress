@@ -61,6 +61,16 @@ func VerifyMFA(contentDB, authDB *sql.DB, baseURL string) http.Handler {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		if reg.ConfirmedAt == nil {
+			// The registration backing this challenge was replaced by a new,
+			// not-yet-confirmed enrollment (StartTOTPEnrollment) after the
+			// challenge was issued. Validating against the new secret here
+			// would accept a code the user's authenticator app was never
+			// shown for this login. Fail closed rather than silently
+			// re-checking against unconfirmed state.
+			writeError(w, http.StatusUnauthorized, "invalid code")
+			return
+		}
 
 		verified, usedTOTPStep, recoveryHash, err := verifyMFACode(contentDB, reg, req.Code)
 		if err != nil {
