@@ -5,8 +5,11 @@
 
 ## 進捗(セッション再開用)
 
-- **P0(4項目)は完了・実機確認済み。** コミット: `70439b4`(autoescape)、`f686edf`(パスワード変更)、`1ca92b4`(ログインロックアウト)、`264c825`(401/403 JSON統一)。作業ツリーはクリーン、`go build`/`go vet`/`go test ./... -count=1`・フロントの`typecheck`/`test`/`build`全green。
-- **次はP1(5〜8: マルチユーザー・権限モデル)。** まだ`/design`していない。着手時はP1の4項目(複数管理者CRUD、ロール/権限モデル、2FA、セッション管理)をまとめて設計するか、5→6→7→8の順に1つずつ設計するかをユーザーに確認してから進めること(P1は既存のusers/sessionsテーブル・adminapi構造に大きく手を入れるため、他のPと違って手戻りコストが高い)。
+- **P0(4項目)は完了・実機確認済み。** コミット: `70439b4`(autoescape)、`f686edf`(パスワード変更)、`1ca92b4`(ログインロックアウト)、`264c825`(401/403 JSON統一)。
+- **P1(5〜8: マルチユーザー・権限モデル)は`/design`→`/breakdown`まで完了、実装未着手。**
+  - 設計: `docs/plans/p1-multi-user-rbac/design.md`。4項目(複数管理者CRUD、capability-basedロール/権限モデル、TOTP 2FA、セッション管理)をまとめて1件として設計(ユーザー選択)。architect 3種(simplest-possible/security-strictness-first/migration-risk-first)並列生成→critic judgeでmigration-risk-first案を採用→Opus 5とFableによる独立REFUTEレビューを2ラウンド実施し、発見された欠陥(ロールバック時のroleデフォルト値バグ、`mfa_challenges`のFK未処理カスケード、`mfa_failures`ロック未チェック、CSRF記述の内部矛盾、app.goトップレベルmuxバイパスの過大な主張、記事所有権チェックに必要なRole伝播の欠落、降格処理の競合)を全て反映済み。
+  - タスク分解: `docs/plans/p1-multi-user-rbac/tasks.md`(T1〜T17、依存関係順)。
+  - **次のアクション: T1(roleカラム追加マイグレーション`0003_user_roles.sql`)。** 指示書を`.claude/handoffs/p1-t1-user-roles/{instructions,acceptance}.md`に作成済み(gitignore対象、リポジトリ非コミット)。実装はまだ行っていない。新しいセッションで再開する場合は、まず`docs/plans/p1-multi-user-rbac/design.md`と`tasks.md`を読み、`.claude/handoffs/p1-t1-user-roles/instructions.md`の指示書に従ってT1から着手する(T3・T9・T12は設計判断を伴うため高コストモデルでの実装を推奨、tasks.md参照)。
 - P2の12(コメント)着手前に「実装するか自体」の要確認が必要、という指示は未消化のまま残っている。
 
 ## 前提: WordPressが脆弱になりがちな理由への対抗設計原則
