@@ -193,6 +193,22 @@ func currentUserID(r *http.Request, authDB *sql.DB) (int64, bool) {
 	return auth.ValidateSession(r.Context(), authDB, cookie.Value)
 }
 
+// currentPrincipal resolves the requesting user's Principal (UserID and
+// Role), preferring the value AuthMiddleware attached to the request
+// context. Falls back to re-deriving it from the session cookie via
+// auth.ValidateSessionWithRole so handlers still behave correctly under
+// direct tests that bypass AuthMiddleware (design.md §4).
+func currentPrincipal(r *http.Request, authDB *sql.DB) (auth.Principal, bool) {
+	if p, ok := auth.PrincipalFrom(r.Context()); ok {
+		return p, true
+	}
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return auth.Principal{}, false
+	}
+	return auth.ValidateSessionWithRole(r.Context(), authDB, cookie.Value)
+}
+
 // ListPosts returns the handler for GET /api/posts (design.md §4).
 // Supports ?status=&limit=&offset= (limit default 20/cap 100, offset
 // default 0; malformed values -> 400). total reflects the count after the
@@ -318,7 +334,7 @@ func CreatePost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 }
 
 // GetPost returns the handler for GET /api/posts/{id} (design.md §4).
-func GetPost(contentDB *sql.DB) http.Handler {
+func GetPost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePostID(r)
 		if !ok {
@@ -343,11 +359,31 @@ func GetPost(contentDB *sql.DB) http.Handler {
 // UpdatePost returns the handler for PUT /api/posts/{id} (design.md §4).
 // Requires If-Match: "<version>" (missing/unparsable -> 400); maps
 // ErrNotFound -> 404, ErrSlugConflict -> 409, ErrVersionMismatch -> 412.
-func UpdatePost(contentDB *sql.DB) http.Handler {
+func UpdatePost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePostID(r)
 		if !ok {
 			writeError(w, http.StatusBadRequest, "invalid id")
+			return
+		}
+
+		principal, ok := currentPrincipal(r, authDB)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		existing, err := content.Get(contentDB, id)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "post not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if existing.AuthorID != principal.UserID && !principal.Role.Has(auth.CapPostsEditOthers) {
+			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
@@ -396,11 +432,17 @@ func UpdatePost(contentDB *sql.DB) http.Handler {
 // storage.DeletePost cannot itself distinguish "no such id" from "version
 // mismatch" (both yield 0 rows affected), existence is checked first via
 // content.Get so the two can be reported as 404 vs 412 respectively.
-func DeletePost(contentDB *sql.DB) http.Handler {
+func DeletePost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePostID(r)
 		if !ok {
 			writeError(w, http.StatusBadRequest, "invalid id")
+			return
+		}
+
+		principal, ok := currentPrincipal(r, authDB)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
@@ -410,12 +452,17 @@ func DeletePost(contentDB *sql.DB) http.Handler {
 			return
 		}
 
-		if _, err := content.Get(contentDB, id); err != nil {
+		existing, err := content.Get(contentDB, id)
+		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				writeError(w, http.StatusNotFound, "post not found")
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if existing.AuthorID != principal.UserID && !principal.Role.Has(auth.CapPostsEditOthers) {
+			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 

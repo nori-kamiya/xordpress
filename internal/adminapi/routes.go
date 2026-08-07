@@ -32,9 +32,9 @@ func routes(contentDB, authDB *sql.DB) []routeEntry {
 	return []routeEntry{
 		route("GET /api/posts", auth.CapPostsRead, ListPosts(contentDB)),
 		route("POST /api/posts", auth.CapPostsEditOwn, CreatePost(contentDB, authDB)),
-		route("GET /api/posts/{id}", auth.CapPostsRead, GetPost(contentDB)),
-		route("PUT /api/posts/{id}", auth.CapPostsEditOwn, UpdatePost(contentDB)),
-		route("DELETE /api/posts/{id}", auth.CapPostsEditOwn, DeletePost(contentDB)),
+		route("GET /api/posts/{id}", auth.CapPostsRead, GetPost(contentDB, authDB)),
+		route("PUT /api/posts/{id}", auth.CapPostsEditOwn, UpdatePost(contentDB, authDB)),
+		route("DELETE /api/posts/{id}", auth.CapPostsEditOwn, DeletePost(contentDB, authDB)),
 
 		route("DELETE /api/session", auth.CapSelfManage, Logout(authDB)),
 		route("PUT /api/account/password", auth.CapSelfManage, ChangePassword(contentDB, authDB)),

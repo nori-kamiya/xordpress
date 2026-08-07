@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/nori-kamiya/xordpress/internal/adminapi"
+	"github.com/nori-kamiya/xordpress/internal/auth"
 )
 
 // newPostsMux registers the full set of posts patterns on a local
@@ -19,9 +20,9 @@ func newPostsMux(db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/posts", adminapi.ListPosts(db))
 	mux.Handle("POST /api/posts", adminapi.CreatePost(db, db))
-	mux.Handle("GET /api/posts/{id}", adminapi.GetPost(db))
-	mux.Handle("PUT /api/posts/{id}", adminapi.UpdatePost(db))
-	mux.Handle("DELETE /api/posts/{id}", adminapi.DeletePost(db))
+	mux.Handle("GET /api/posts/{id}", adminapi.GetPost(db, db))
+	mux.Handle("PUT /api/posts/{id}", adminapi.UpdatePost(db, db))
+	mux.Handle("DELETE /api/posts/{id}", adminapi.DeletePost(db, db))
 	return mux
 }
 
@@ -208,5 +209,88 @@ func TestGetPost_NonNumericID_Returns400(t *testing.T) {
 	rec := doPostRequest(t, mux, http.MethodGet, "/api/posts/not-a-number", cookie, "", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+// seedUserWithRole inserts a second user directly (T5's user CRUD storage
+// layer doesn't exist yet) with the given role, then logs in and returns
+// the resulting session cookie.
+func seedUserWithRole(t *testing.T, db *sql.DB, username, password, role string) *http.Cookie {
+	t.Helper()
+
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, 0)`,
+		username, hash, role,
+	); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	rec := doLoginRequest(t, adminapi.Login(db, db, testBaseURL), username, password)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("login status = %d, want %d, body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	return rec.Result().Cookies()[0]
+}
+
+// TestUpdatePost_OtherUsersPost_ContributorForbidden_EditorAllowed exercises
+// the row-level ownership check design.md §4 requires in the handler:
+// CapPostsEditOwn alone (contributor, author) is not enough to edit a post
+// authored by someone else, but CapPostsEditOthers (editor, administrator)
+// is.
+func TestUpdatePost_OtherUsersPost_ContributorForbidden_EditorAllowed(t *testing.T) {
+	db := newTestDB(t)
+	mux := newPostsMux(db)
+	ownerCookie := loginCookie(t, db)
+
+	createRec := doPostRequest(t, mux, http.MethodPost, "/api/posts", ownerCookie, "", map[string]string{
+		"title": "Owner's post", "slug": "owners-post", "body": "<p>hi</p>", "status": "draft",
+	})
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d, body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+	postID := decodePostResponse(t, createRec)["id"].(float64)
+	path := "/api/posts/" + strconv.FormatInt(int64(postID), 10)
+
+	contributorCookie := seedUserWithRole(t, db, "contributor-1", "password123", "contributor")
+	forbiddenRec := doPostRequest(t, mux, http.MethodPut, path, contributorCookie, `"1"`, map[string]string{
+		"title": "Hijacked", "slug": "owners-post", "body": "<p>hijacked</p>", "status": "draft",
+	})
+	if forbiddenRec.Code != http.StatusForbidden {
+		t.Fatalf("contributor update status = %d, want %d, body=%s", forbiddenRec.Code, http.StatusForbidden, forbiddenRec.Body.String())
+	}
+
+	editorCookie := seedUserWithRole(t, db, "editor-1", "password123", "editor")
+	allowedRec := doPostRequest(t, mux, http.MethodPut, path, editorCookie, `"1"`, map[string]string{
+		"title": "Edited by editor", "slug": "owners-post", "body": "<p>edited</p>", "status": "draft",
+	})
+	if allowedRec.Code != http.StatusOK {
+		t.Fatalf("editor update status = %d, want %d, body=%s", allowedRec.Code, http.StatusOK, allowedRec.Body.String())
+	}
+}
+
+// TestDeletePost_OtherUsersPost_ContributorForbidden mirrors the update
+// ownership check for DeletePost.
+func TestDeletePost_OtherUsersPost_ContributorForbidden(t *testing.T) {
+	db := newTestDB(t)
+	mux := newPostsMux(db)
+	ownerCookie := loginCookie(t, db)
+
+	createRec := doPostRequest(t, mux, http.MethodPost, "/api/posts", ownerCookie, "", map[string]string{
+		"title": "Owner's post", "slug": "owners-post-2", "body": "<p>hi</p>", "status": "draft",
+	})
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d, body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+	postID := decodePostResponse(t, createRec)["id"].(float64)
+	path := "/api/posts/" + strconv.FormatInt(int64(postID), 10)
+
+	contributorCookie := seedUserWithRole(t, db, "contributor-2", "password123", "contributor")
+	rec := doPostRequest(t, mux, http.MethodDelete, path, contributorCookie, `"1"`, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("contributor delete status = %d, want %d, body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 }
