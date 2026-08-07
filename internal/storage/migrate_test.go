@@ -1,6 +1,7 @@
 package storage_test
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/nori-kamiya/xordpress/internal/storage"
@@ -25,6 +26,11 @@ func TestOpenAndMigrate_CreatesAllTables(t *testing.T) {
 		if err != nil {
 			t.Errorf("table %q not found: %v", table, err)
 		}
+	}
+
+	var role string
+	if err := db.QueryRow(`SELECT role FROM users LIMIT 1`).Scan(&role); err != nil && err != sql.ErrNoRows {
+		t.Errorf("query role column: %v", err)
 	}
 }
 
@@ -63,5 +69,34 @@ func TestMigrate_IsIdempotentAcrossRestarts(t *testing.T) {
 	if countAfterSecond != countAfterFirst {
 		t.Errorf("schema_migrations rows after second Migrate() = %d, want %d (no duplicate re-application)",
 			countAfterSecond, countAfterFirst)
+	}
+}
+
+func TestMigrate_BackfillsExistingUserToAdministrator(t *testing.T) {
+	dataDir := t.TempDir()
+
+	db, err := storage.Open(dataDir)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if err := storage.Migrate(db); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	if _, err := db.Exec(
+		`INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)`,
+		"legacy-admin", "hash", 0,
+	); err != nil {
+		t.Fatalf("insert legacy user (no role column): %v", err)
+	}
+
+	var role string
+	if err := db.QueryRow(`SELECT role FROM users WHERE username = ?`, "legacy-admin").Scan(&role); err != nil {
+		t.Fatalf("query role: %v", err)
+	}
+	if role != "administrator" {
+		t.Errorf("role = %q, want %q (DEFAULT must be administrator, not contributor — see 0003_user_roles.sql comment)", role, "administrator")
 	}
 }
