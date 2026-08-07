@@ -22,8 +22,10 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 // AuthMiddleware extracts the session cookie from the request, validates it
-// via ValidateSession, and rejects the request with 401 if the cookie is
-// missing, unknown, or expired. On success it calls next unchanged.
+// via ValidateSessionWithRole, and rejects the request with 401 if the
+// cookie is missing, unknown, or expired. On success it attaches the
+// resolved Principal (UserID and Role) to the request context, retrievable
+// via PrincipalFrom, and calls next.
 func AuthMiddleware(db *sql.DB, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(sessionCookieName)
@@ -32,12 +34,13 @@ func AuthMiddleware(db *sql.DB, next http.Handler) http.Handler {
 			return
 		}
 
-		if _, ok := ValidateSession(r.Context(), db, cookie.Value); !ok {
+		p, ok := ValidateSessionWithRole(r.Context(), db, cookie.Value)
+		if !ok {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
 	})
 }
 

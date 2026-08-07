@@ -66,6 +66,41 @@ func TestIssueSessionThenValidateSessionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidateSessionWithRoleReturnsPrincipal(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	cookie, err := IssueSession(ctx, db, "https://example.com", 1)
+	if err != nil {
+		t.Fatalf("IssueSession: %v", err)
+	}
+
+	p, ok := ValidateSessionWithRole(ctx, db, cookie.Value)
+	if !ok {
+		t.Fatal("ValidateSessionWithRole returned ok=false for a freshly issued session")
+	}
+	if p.UserID != 1 {
+		t.Errorf("UserID = %d, want 1", p.UserID)
+	}
+	if p.Role != RoleAdministrator {
+		t.Errorf("Role = %q, want %q", p.Role, RoleAdministrator)
+	}
+}
+
+func TestValidateSessionWithRoleWrongTokenFails(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	if _, err := IssueSession(ctx, db, "http://localhost:8080", 1); err != nil {
+		t.Fatalf("IssueSession: %v", err)
+	}
+
+	_, ok := ValidateSessionWithRole(ctx, db, "not-a-real-token")
+	if ok {
+		t.Fatal("ValidateSessionWithRole returned ok=true for a token that was never issued")
+	}
+}
+
 func TestIssueSessionSecureFlagFollowsBaseURLScheme(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

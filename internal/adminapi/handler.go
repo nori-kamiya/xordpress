@@ -6,29 +6,24 @@ import (
 	"net/http"
 )
 
-// Handler assembles the internal *http.ServeMux for the authenticated
-// admin API (design.md §5). It registers full path+method patterns for
-// every /api/* endpoint except POST /api/setup and POST /api/session,
-// which are registered individually at the top-level mux (unauthenticated)
-// and are not part of this handler.
+// Handler assembles the authenticated admin API from the routes() table
+// (design.md §4), wrapping each entry's handler with requireCap so it only
+// runs for a Principal (attached to the request context by
+// auth.AuthMiddleware) whose Role has the declared Capability. It registers
+// full path+method patterns for every /api/* endpoint except POST
+// /api/setup and POST /api/session, which are registered individually at
+// the top-level mux (unauthenticated) and are not part of this handler.
 //
 // contentDB is used for the posts and settings endpoints; authDB is used
 // for DELETE /api/session and to resolve the authenticated user's id for
 // POST /api/posts.
-func Handler(contentDB *sql.DB, authDB *sql.DB) *http.ServeMux {
+//
+// Handler returns http.Handler rather than *http.ServeMux so callers cannot
+// later add routes via mux.Handle that bypass requireCap.
+func Handler(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 	mux := http.NewServeMux()
-
-	mux.Handle("GET /api/posts", ListPosts(contentDB))
-	mux.Handle("POST /api/posts", CreatePost(contentDB, authDB))
-	mux.Handle("GET /api/posts/{id}", GetPost(contentDB))
-	mux.Handle("PUT /api/posts/{id}", UpdatePost(contentDB))
-	mux.Handle("DELETE /api/posts/{id}", DeletePost(contentDB))
-
-	mux.Handle("DELETE /api/session", Logout(authDB))
-	mux.Handle("PUT /api/account/password", ChangePassword(contentDB, authDB))
-
-	mux.Handle("GET /api/settings", GetSettings(contentDB))
-	mux.Handle("PUT /api/settings", UpdateSettings(contentDB))
-
+	for _, rt := range routes(contentDB, authDB) {
+		mux.Handle(rt.pattern, requireCap(rt.cap, rt.h))
+	}
 	return mux
 }

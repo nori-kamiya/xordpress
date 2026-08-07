@@ -79,6 +79,28 @@ func ValidateSession(ctx context.Context, db *sql.DB, token string) (userID int6
 	return session.UserID, true
 }
 
+// ValidateSessionWithRole behaves like ValidateSession but additionally
+// resolves the session's user role, joining against users.role in a second
+// query (design.md §4). Used by AuthMiddleware to populate the request
+// context's Principal.
+func ValidateSessionWithRole(ctx context.Context, db *sql.DB, token string) (Principal, bool) {
+	session, err := storage.GetSessionByTokenHash(db, hashSessionToken(token))
+	if err != nil {
+		return Principal{}, false
+	}
+
+	if time.Now().Unix() > session.ExpiresAt {
+		return Principal{}, false
+	}
+
+	var role string
+	if err := db.QueryRow(`SELECT role FROM users WHERE id = ?`, session.UserID).Scan(&role); err != nil {
+		return Principal{}, false
+	}
+
+	return Principal{UserID: session.UserID, Role: Role(role)}, true
+}
+
 // generateSessionToken returns a fresh cryptographically random session
 // token, URL-safe base64 encoded.
 func generateSessionToken() (string, error) {

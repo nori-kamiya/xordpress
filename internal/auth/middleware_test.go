@@ -55,6 +55,37 @@ func TestAuthMiddlewareValidSessionPasses(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareAttachesPrincipalToContext(t *testing.T) {
+	db := newTestDB(t)
+	cookie, err := IssueSession(t.Context(), db, "http://localhost:8080", 1)
+	if err != nil {
+		t.Fatalf("IssueSession: %v", err)
+	}
+
+	var gotPrincipal Principal
+	var gotOK bool
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPrincipal, gotOK = PrincipalFrom(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/posts", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	AuthMiddleware(db, next).ServeHTTP(rec, req)
+
+	if !gotOK {
+		t.Fatal("PrincipalFrom returned ok=false inside next handler")
+	}
+	if gotPrincipal.UserID != 1 {
+		t.Errorf("UserID = %d, want 1", gotPrincipal.UserID)
+	}
+	if gotPrincipal.Role != RoleAdministrator {
+		t.Errorf("Role = %q, want %q", gotPrincipal.Role, RoleAdministrator)
+	}
+}
+
 func TestAuthMiddlewareMissingCookieUnauthorized(t *testing.T) {
 	db := newTestDB(t)
 
