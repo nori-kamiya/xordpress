@@ -307,9 +307,13 @@ func CreatePost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 			return
 		}
 
-		authorID, ok := currentUserID(r, authDB)
+		principal, ok := currentPrincipal(r, authDB)
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if req.Status == "published" && !principal.Role.Has(auth.CapPostsPublish) {
+			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
@@ -318,7 +322,7 @@ func CreatePost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 			Title:    req.Title,
 			Body:     req.Body,
 			Status:   req.Status,
-			AuthorID: authorID,
+			AuthorID: principal.UserID,
 		})
 		if err != nil {
 			if errors.Is(err, storage.ErrSlugConflict) {
@@ -400,6 +404,10 @@ func UpdatePost(contentDB *sql.DB, authDB *sql.DB) http.Handler {
 
 		if msg := validatePostFields(req); msg != "" {
 			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		if req.Status == "published" && !principal.Role.Has(auth.CapPostsPublish) {
+			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 

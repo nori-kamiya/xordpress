@@ -294,3 +294,75 @@ func TestDeletePost_OtherUsersPost_ContributorForbidden(t *testing.T) {
 		t.Fatalf("contributor delete status = %d, want %d, body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 }
+
+// TestCreatePost_PublishedStatus_RequiresCapPostsPublish exercises the
+// body-dependent capability check design.md §4 requires: CapPostsEditOwn
+// alone (contributor, author) is not enough to create a post whose status
+// is "published" — only CapPostsPublish (editor, administrator) is.
+func TestCreatePost_PublishedStatus_RequiresCapPostsPublish(t *testing.T) {
+	cases := []struct {
+		role     string
+		wantCode int
+	}{
+		{"contributor", http.StatusForbidden},
+		{"author", http.StatusCreated}, // author has CapPostsPublish (roleCaps)
+		{"editor", http.StatusCreated},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.role, func(t *testing.T) {
+			db := newTestDB(t)
+			mux := newPostsMux(db)
+			// seedAdmin ensures at least one administrator exists before the
+			// role under test is created directly via SQL.
+			loginCookie(t, db)
+			cookie := seedUserWithRole(t, db, tc.role+"-user", "password123", tc.role)
+
+			rec := doPostRequest(t, mux, http.MethodPost, "/api/posts", cookie, "", map[string]string{
+				"title": "Published by " + tc.role, "slug": tc.role + "-published", "body": "<p>hi</p>", "status": "published",
+			})
+			if rec.Code != tc.wantCode {
+				t.Fatalf("status = %d, want %d, body=%s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestUpdatePost_PublishedStatus_RequiresCapPostsPublish mirrors the create
+// check for UpdatePost. Each case updates its OWN post (not the admin's) so
+// the ownership check (CapPostsEditOthers) never fires -- only the publish
+// check under test can produce the 403.
+func TestUpdatePost_PublishedStatus_RequiresCapPostsPublish(t *testing.T) {
+	cases := []struct {
+		role     string
+		wantCode int
+	}{
+		{"contributor", http.StatusForbidden},
+		{"editor", http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.role, func(t *testing.T) {
+			db := newTestDB(t)
+			mux := newPostsMux(db)
+			loginCookie(t, db) // ensure an administrator exists (FK/seed convention)
+			cookie := seedUserWithRole(t, db, tc.role+"-user-2", "password123", tc.role)
+
+			createRec := doPostRequest(t, mux, http.MethodPost, "/api/posts", cookie, "", map[string]string{
+				"title": "Draft by " + tc.role, "slug": tc.role + "-update-published", "body": "<p>hi</p>", "status": "draft",
+			})
+			if createRec.Code != http.StatusCreated {
+				t.Fatalf("create status = %d, want %d, body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+			}
+			postID := decodePostResponse(t, createRec)["id"].(float64)
+			path := "/api/posts/" + strconv.FormatInt(int64(postID), 10)
+
+			rec := doPostRequest(t, mux, http.MethodPut, path, cookie, `"1"`, map[string]string{
+				"title": "Now published", "slug": tc.role + "-update-published", "body": "<p>hi</p>", "status": "published",
+			})
+			if rec.Code != tc.wantCode {
+				t.Fatalf("status = %d, want %d, body=%s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
