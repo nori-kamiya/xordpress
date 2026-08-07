@@ -50,9 +50,9 @@ func AuthMiddleware(db *sql.DB, next http.Handler) http.Handler {
 // response does not leak whether the request would otherwise have been
 // authenticated). A missing Origin header is allowed.
 //
-// For POST and PUT requests (methods that carry a body), it additionally
-// requires a Content-Type of application/json; DELETE is exempt since it
-// carries no body.
+// For POST, PUT, and PATCH requests (methods that carry a body), it
+// additionally requires a Content-Type of application/json; DELETE is
+// exempt since it carries no body.
 func CSRFMiddleware(baseURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && origin != baseURL {
@@ -60,7 +60,7 @@ func CSRFMiddleware(baseURL string, next http.Handler) http.Handler {
 			return
 		}
 
-		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
 			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil || mediaType != "application/json" {
 				writeError(w, http.StatusBadRequest, "unsupported content type")

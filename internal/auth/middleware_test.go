@@ -236,3 +236,30 @@ func TestCSRFMiddlewarePutRequiresJSONContentType(t *testing.T) {
 		t.Fatalf("status = %d, want a non-200 rejection for non-JSON Content-Type", rec.Code)
 	}
 }
+
+func TestCSRFMiddlewarePatchRequiresJSONContentType(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/1", nil)
+	req.Header.Set("Origin", "http://localhost:8080")
+	req.Header.Set("Content-Type", "text/plain")
+	rec := httptest.NewRecorder()
+
+	CSRFMiddleware("http://localhost:8080", okHandler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d for non-JSON Content-Type on PATCH", rec.Code, http.StatusBadRequest)
+	}
+	assertJSONError(t, rec, "unsupported content type")
+}
+
+func TestCSRFMiddlewarePatchWithJSONContentTypePasses(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPatch, "/api/users/1", nil)
+	req.Header.Set("Origin", "http://localhost:8080")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	CSRFMiddleware("http://localhost:8080", okHandler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
