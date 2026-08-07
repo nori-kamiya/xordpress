@@ -6,12 +6,11 @@
 ## 進捗(セッション再開用)
 
 - **P0(4項目)は完了・実機確認済み。** コミット: `70439b4`(autoescape)、`f686edf`(パスワード変更)、`1ca92b4`(ログインロックアウト)、`264c825`(401/403 JSON統一)。
-- **P1(5〜8: マルチユーザー・権限モデル)は`/design`→`/breakdown`完了、実装はT1〜T6・T10・T4bまで完了・レビュー済み。**
-  - 設計: `docs/plans/p1-multi-user-rbac/design.md`。タスク分解: `docs/plans/p1-multi-user-rbac/tasks.md`(T1〜T17、依存関係順)。
-  - **完了分(コミット順)**: `a8813ca` T1(role列+CHECK、`0003_user_roles.sql`) → `c45ac2a` T2(Capability/Role、`internal/auth/capability.go`) → `068bf83` T3(routeテーブル化+requireCap+Principal格納) → `e6c32b9` T4(currentPrincipal化+記事所有権チェック) → `62fdc09`+`bf38b04` T4b(CapPostsPublish未強制のギャップ発見・design.md/tasks.mdに追記・修正、実装中に発見しタスク分解へ追加した項目) → `5db1a7e` T10(MFAテーブル`0005_mfa.sql`、design順を訂正しT5より先行実施 — T5のカスケード削除がこれらのテーブルに依存するため) → `7203f69` T5(ユーザーCRUD storage層) → `e006e28` T6(最後の管理者保護) → `62868b7`(レビュー指摘対応、godocのチェック順修正+明示テスト追加)。
-  - **レビュー結果(`0cfec25...62868b7`)**: correctness/edge-cases・security/data-safety・contracts/testsの3系統で`code-reviewer`エージェントによる並列レビュー実施、いずれも**merge-ready**。指摘は2件ともminor(`GetPost`の未使用`authDB`引数は設計上意図的なプレースホルダーと確認、`DeleteUserCascadeTx`のgodocチェック順の記載ずれは修正済み)。critical/major指摘なし。
-  - **次のアクション: T7(sessionsメタデータ列`0004_sessions_meta.sql`、depends on: T1のみ)。** tasks.mdのT7セクション参照。T7完了後はT8(セッション一覧/失効API)へ。T9(ユーザーCRUD API)はT3,T5,T6に依存し着手可能(executor: main推奨、認可境界に関わる設計判断を伴うため)。T11〜T13(TOTP/2FA)はT10完了済みのため着手可能。T14(CSRFのPATCH対応)はT3完了済みのためいつでも着手可能で他タスクと独立。T15〜T17(フロントエンド)は対応するバックエンドAPI完了後。
-  - 新しいセッションで再開する場合は、本ファイルのこの節と`tasks.md`のT7以降を読めば着手できる(`.claude/handoffs/`配下の個別指示書はT1のみ・gitignore対象で現存しない可能性がある)。
+- **P1(5〜8: マルチユーザー・権限モデル)はT1〜T17全タスク完了。**
+  - 設計: `docs/plans/p1-multi-user-rbac/design.md`。タスク分解: `docs/plans/p1-multi-user-rbac/tasks.md`(T1〜T17、依存関係順。T4b・T9bは実装中に発見したギャップとして追加)。
+  - **完了分(コミット順、直近セッション分のみ抜粋。T1〜T8・T10・T11・T14・T16は既に完了済みだったため過去の記録を参照)**: `2ed44fc` T9(ユーザーCRUD API `/api/users*`) → `dfda124` T9b(`GET /api/account`、T15が依存するがtasks.mdの元スコープに含まれていなかったギャップ) → `a4599b2` T12(2FAログイン2段階フロー、`POST /api/session`のmfa_required分岐+`POST /api/session/mfa`) → `b642b8d` T13(TOTP登録/確認/無効化API) → `ae96db0` T15+T17(フロントエンド: ユーザー管理画面、2FA登録/無効化画面、ログイン2段階目のUI。router.tsx/root.tsx/errorMessages.tsを共有するため1コミットにまとめた)。
+  - **レビュー体制**: 各バックエンドコミット前に`advisor`ツールでレビューを通し、`created_at`が0で返る不具合、到達不能な「最後の管理者」テストシナリオ、confirm直後のTOTPコードリプレイ窓、DBエラーをロックアウトカウントに誤って加算する不具合、再登録時に古いリカバリコードが残る不具合を実装時に発見・修正済み。フロントエンドも同様にレビューし、ナビゲーションの出し分けが`useLocation().pathname`のbasepath剥がれに依存する箇所を実際の`createRouter`+`createMemoryHistory`で検証し直した(`root.test.tsx`)。
+  - P1は完了。次はP2(design.md未着手)。
 - P2の12(コメント)着手前に「実装するか自体」の要確認が必要、という指示は未消化のまま残っている。
 
 ## 前提: WordPressが脆弱になりがちな理由への対抗設計原則
