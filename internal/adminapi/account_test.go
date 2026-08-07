@@ -102,3 +102,63 @@ func TestChangePassword_NoCookie_Returns401(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
 	}
 }
+
+func doGetAccountRequest(t *testing.T, handler http.Handler, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/account", nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestGetAccount_Administrator_ReturnsAllCapabilities(t *testing.T) {
+	db := newTestDB(t)
+	cookie := loginCookie(t, db)
+
+	rec := doGetAccountRequest(t, adminapi.GetAccount(db, db), cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got["username"] != "admin" || got["role"] != "administrator" {
+		t.Fatalf("got = %v, want username=admin role=administrator", got)
+	}
+	caps, ok := got["capabilities"].([]any)
+	if !ok || len(caps) != len(auth.RoleAdministrator.CapabilityNames()) {
+		t.Fatalf("capabilities = %v, want %d entries", got["capabilities"], len(auth.RoleAdministrator.CapabilityNames()))
+	}
+}
+
+func TestGetAccount_Editor_OmitsUsersManage(t *testing.T) {
+	db := newTestDB(t)
+	seedUser(t, db, "editor-1", "password123", auth.RoleEditor)
+	cookie := loginAs(t, db, "editor-1", "password123")
+
+	rec := doGetAccountRequest(t, adminapi.GetAccount(db, db), cookie)
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, c := range got["capabilities"].([]any) {
+		if c == "users:manage" {
+			t.Fatalf("capabilities = %v, editor should not have users:manage", got["capabilities"])
+		}
+	}
+}
+
+func TestGetAccount_NoCookie_Returns401(t *testing.T) {
+	db := newTestDB(t)
+
+	rec := doGetAccountRequest(t, adminapi.GetAccount(db, db), nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}

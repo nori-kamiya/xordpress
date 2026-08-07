@@ -37,6 +37,7 @@ func routes(contentDB, authDB *sql.DB) []routeEntry {
 		route("DELETE /api/posts/{id}", auth.CapPostsEditOwn, DeletePost(contentDB, authDB)),
 
 		route("DELETE /api/session", auth.CapSelfManage, Logout(authDB)),
+		route("GET /api/account", auth.CapSelfManage, GetAccount(contentDB, authDB)),
 		route("PUT /api/account/password", auth.CapSelfManage, ChangePassword(contentDB, authDB)),
 		route("GET /api/account/sessions", auth.CapSelfManage, ListSessions(authDB)),
 		route("DELETE /api/account/sessions/{id}", auth.CapSelfManage, DeleteOwnSession(authDB)),

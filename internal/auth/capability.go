@@ -44,3 +44,32 @@ func IsValidRole(r Role) bool {
 	_, ok := roleCaps[r]
 	return ok
 }
+
+// capabilityNames pairs every Capability bit with its wire name, in a fixed
+// order, so GET /api/account (design.md §5) can render a Role's
+// capabilities as a stable, human-readable string array instead of exposing
+// the internal bitflag.
+var capabilityNames = []struct {
+	cap  Capability
+	name string
+}{
+	{CapPostsRead, "posts:read"},
+	{CapPostsEditOwn, "posts:edit_own"},
+	{CapPostsEditOthers, "posts:edit_others"},
+	{CapPostsPublish, "posts:publish"},
+	{CapUsersManage, "users:manage"},
+	{CapSettingsManage, "settings:manage"},
+	{CapSelfManage, "self:manage"},
+}
+
+// CapabilityNames returns the wire names of every capability r has, in
+// capabilityNames' fixed order.
+func (r Role) CapabilityNames() []string {
+	names := []string{}
+	for _, cn := range capabilityNames {
+		if r.Has(cn.cap) {
+			names = append(names, cn.name)
+		}
+	}
+	return names
+}

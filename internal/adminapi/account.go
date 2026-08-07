@@ -21,6 +21,41 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+// accountResponse is the body of GET /api/account.
+type accountResponse struct {
+	ID           int64    `json:"id"`
+	Username     string   `json:"username"`
+	Role         string   `json:"role"`
+	Capabilities []string `json:"capabilities"`
+}
+
+// GetAccount returns the handler for GET /api/account (design.md §5): the
+// SPA's source of truth for "who am I and what can I do", used to decide
+// which navigation/actions to show (cosmetic only — every endpoint still
+// enforces its own capability server-side).
+func GetAccount(contentDB, authDB *sql.DB) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, ok := currentPrincipal(r, authDB)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		user, err := storage.GetUserByID(contentDB, p.UserID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		writeJSON(w, http.StatusOK, accountResponse{
+			ID:           user.ID,
+			Username:     user.Username,
+			Role:         string(p.Role),
+			Capabilities: p.Role.CapabilityNames(),
+		})
+	})
+}
+
 // ChangePassword returns the handler for PUT /api/account/password (要認証
 // -- enforced by the outer authMiddleware per app.go's routing, not by this
 // handler itself, matching UpdateSettings' pattern). It verifies
