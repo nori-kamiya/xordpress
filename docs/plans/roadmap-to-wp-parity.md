@@ -10,7 +10,12 @@
   - 設計: `docs/plans/p1-multi-user-rbac/design.md`。タスク分解: `docs/plans/p1-multi-user-rbac/tasks.md`(T1〜T17、依存関係順。T4b・T9bは実装中に発見したギャップとして追加)。
   - **完了分(コミット順、直近セッション分のみ抜粋。T1〜T8・T10・T11・T14・T16は既に完了済みだったため過去の記録を参照)**: `2ed44fc` T9(ユーザーCRUD API `/api/users*`) → `dfda124` T9b(`GET /api/account`、T15が依存するがtasks.mdの元スコープに含まれていなかったギャップ) → `a4599b2` T12(2FAログイン2段階フロー、`POST /api/session`のmfa_required分岐+`POST /api/session/mfa`) → `b642b8d` T13(TOTP登録/確認/無効化API) → `ae96db0` T15+T17(フロントエンド: ユーザー管理画面、2FA登録/無効化画面、ログイン2段階目のUI。router.tsx/root.tsx/errorMessages.tsを共有するため1コミットにまとめた)。
   - **レビュー体制**: 各バックエンドコミット前に`advisor`ツールでレビューを通し、`created_at`が0で返る不具合、到達不能な「最後の管理者」テストシナリオ、confirm直後のTOTPコードリプレイ窓、DBエラーをロックアウトカウントに誤って加算する不具合、再登録時に古いリカバリコードが残る不具合を実装時に発見・修正済み。フロントエンドも同様にレビューし、ナビゲーションの出し分けが`useLocation().pathname`のbasepath剥がれに依存する箇所を実際の`createRouter`+`createMemoryHistory`で検証し直した(`root.test.tsx`)。
-  - P1は完了。次はP2(design.md未着手)。
+  - P1は完了。
+- **P2-9(メディアライブラリ/アップロード)は設計・タスク分解完了、実装未着手。**
+  - 設計: `docs/plans/p2-media-library/design.md`。タスク分解: `docs/plans/p2-media-library/tasks.md`(T1〜T10、依存関係順)。
+  - T1(mediaマイグレーション)・T2(internal/media検証・再エンコード)は実装・テスト・コミット済み。
+  - 次セッションの着手点: T3(internal/storage/media.go CRUD、tasks.md参照)から。T4(capability追加)はT3と独立に着手可。
+  - 設計時の判断: webpは標準ライブラリのみではデコード・エンコードいずれも不可(`golang.org/x/image/webp`が必要=新規依存)と判明したため、MVPではwebp非対応(400)に確定(design.md §6参照)。
 - P2の12(コメント)着手前に「実装するか自体」の要確認が必要、という指示は未消化のまま残っている。
 
 ## 前提: WordPressが脆弱になりがちな理由への対抗設計原則
