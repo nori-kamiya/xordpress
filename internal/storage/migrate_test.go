@@ -20,7 +20,7 @@ func TestOpenAndMigrate_CreatesAllTables(t *testing.T) {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
-	for _, table := range []string{"users", "posts", "sessions", "settings", "login_failures", "schema_migrations", "user_totp", "mfa_recovery_codes", "mfa_challenges", "mfa_failures"} {
+	for _, table := range []string{"users", "posts", "sessions", "settings", "login_failures", "schema_migrations", "user_totp", "mfa_recovery_codes", "mfa_challenges", "mfa_failures", "media"} {
 		var name string
 		err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
 		if err != nil {
