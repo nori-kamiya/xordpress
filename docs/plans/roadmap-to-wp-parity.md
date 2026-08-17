@@ -13,8 +13,9 @@
   - P1は完了。
 - **P2-9(メディアライブラリ/アップロード)は設計・タスク分解完了、実装未着手。**
   - 設計: `docs/plans/p2-media-library/design.md`。タスク分解: `docs/plans/p2-media-library/tasks.md`(T1〜T10、依存関係順)。
-  - T1(mediaマイグレーション)・T2(internal/media検証・再エンコード)は実装・テスト・コミット済み。
-  - 次セッションの着手点: T3(internal/storage/media.go CRUD、tasks.md参照)から。T4(capability追加)はT3と独立に着手可。
+  - T1(mediaマイグレーション)・T2(internal/media検証・再エンコード)・T3(internal/storage/media.go CRUD)は実装・テスト・コミット済み。
+  - 次セッションの着手点: T4(capability追加)またはT8(配信ハンドラ、T2のみ依存)から。T5(アップロードAPI)はT3・T4完了後。
+  - T3実装メモ: `InsertMedia`はtasks.mdのシグネチャ通り`createdAt`を引数に取らず内部で`time.Now().Unix()`をスタンプする。そのためT5(`POST /api/media`)がレスポンスの`createdAt`を返す際は、自前で`time.Now()`を計算せず`GetMediaByID`で読み直した値を使うこと(内部スタンプ値とズレるため)。
   - 設計時の判断: webpは標準ライブラリのみではデコード・エンコードいずれも不可(`golang.org/x/image/webp`が必要=新規依存)と判明したため、MVPではwebp非対応(400)に確定(design.md §6参照)。
 - P2の12(コメント)着手前に「実装するか自体」の要確認が必要、という指示は未消化のまま残っている。
 
