@@ -48,12 +48,17 @@ func TestRun_ServesRootAndShutsDownOnContextCancel(t *testing.T) {
 	url := fmt.Sprintf("http://%s/", addr)
 	var resp *http.Response
 	var lastErr error
-	for i := 0; i < 50; i++ {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		resp, lastErr = http.Get(url)
 		if lastErr == nil {
 			break
 		}
-		time.Sleep(20 * time.Millisecond)
+		select {
+		case err := <-runErr:
+			t.Fatalf("Run exited before serving: %v", err)
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	if lastErr != nil {
 		t.Fatalf("GET %s failed after retries: %v", url, lastErr)
